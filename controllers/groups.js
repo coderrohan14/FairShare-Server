@@ -14,7 +14,7 @@ const getAllGroups = async (req, res) => {
 };
 
 const addNewGroup = async (req, res) => {
-  const { name, members } = await req.body;
+  let { name, members } = await req.body;
   const { userID } = await user;
   if (!name || !userID) {
     throw new BadRequestError(
