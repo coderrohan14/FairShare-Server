@@ -20,14 +20,14 @@ router.get("/allexpense/:groupID", authMiddleware, csrfAuthMiddleware, getAllExp
 
 router.post("/", authMiddleware, csrfAuthMiddleware, addNewExpense);
 
-router.delete("/:groupID", authMiddleware, csrfAuthMiddleware, deleteAllExpensesInGrp);
-router.delete("/:expenseID", authMiddleware, csrfAuthMiddleware, deleteSingleExpense);
+router.delete("/delgroup/:groupID", authMiddleware, csrfAuthMiddleware, deleteAllExpensesInGrp);
+router.delete("/delexpense/:expenseID", authMiddleware, csrfAuthMiddleware, deleteSingleExpense);
 
-router.get("/:expenseID", authMiddleware, csrfAuthMiddleware, getSingleExpense);
+router.get("/getexp/:expenseID", authMiddleware, csrfAuthMiddleware, getSingleExpense);
 
 router.patch("/:expenseID", authMiddleware, csrfAuthMiddleware, updateExpense);
 
-router.get("/:groupID", authMiddleware, csrfAuthMiddleware, findUserTotalInGrp);
+router.get("/findbalance/:groupID", authMiddleware, csrfAuthMiddleware, findUserTotalInGrp);
 
 // router.post(
 //   "/addToGroupList/:groupID",
