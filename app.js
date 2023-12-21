@@ -9,6 +9,7 @@ const bodyParser = require("body-parser");
 const passport = require("passport");
 const authRouter = require("./routes/auth");
 const groupsRouter = require("./routes/groups");
+const expenseRouter = require("./routes/expenses");
 const notFoundMiddleware = require("./middlewares/not-found");
 const errorHandlerMiddleware = require("./middlewares/error-handler");
 
@@ -48,6 +49,7 @@ app.use((req, res, next) => {
 
 app.use("/auth", authRouter);
 app.use("/groups", groupsRouter);
+app.use("/expenses", expenseRouter);
 
 app.get("/", (req, res) => {
   res.send("Welcome to the server...");
