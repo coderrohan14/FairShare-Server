@@ -35,7 +35,7 @@ const addNewGroup = async (req, res) => {
         group,
       });
     } else {
-      await Group.findOneAndRemove({ _id: group._id });
+      await Group.findOneAndDelete({ _id: group._id });
       res.status(500).json({
         success: false,
         msg: "Unable to create the group, please try again later.",
@@ -101,7 +101,7 @@ const updateGroup = async (req, res) => {
 
 const deleteGroup = async (req, res) => {
   const { groupID } = await req.params;
-  const deletedGroup = await Group.findOneAndRemove({ _id: groupID });
+  const deletedGroup = await Group.findOneAndDelete({ _id: groupID });
   if (deletedGroup) {
     // Get the members of the deleted group
     const membersToUpdate = deletedGroup.members;

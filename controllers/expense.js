@@ -8,7 +8,10 @@ const getAllExpenseInGroup = async (req, res) => {
   const limitQuery = 10;
   const skipBy = (pageQuery - 1) * limitQuery;
   const sortByQuery = sortBy ? sortBy : "-dateAdded";
-  const expenses = await Expense.find({ grp_id: groupID }).sort(sortByQuery).skip(skipBy).limit(limitQuery);
+  const expenses = await Expense.find({ grp_id: groupID })
+    .sort(sortByQuery)
+    .skip(skipBy)
+    .limit(limitQuery);
   if (expenses) {
     res.status(200).json({ success: true, expenses });
   } else {
@@ -20,33 +23,42 @@ const getAllExpenseInGroup = async (req, res) => {
 };
 
 const getAllExpenseInGroupWithoutFilters = async (req, res) => {
-    const { groupID } = await req.params;
-    const expenses = await Expense.find({ grp_id: groupID })
-    if (expenses) {
-      res.status(200).json({ success: true, expenses });
-    } else {
-      res.status(404).json({
-        success: false,
-        msg: "Unable to fetch all expenses in group at this time, please try again later.",
-      });
-    }
-  };
+  const { groupID } = await req.params;
+  const expenses = await Expense.find({ grp_id: groupID });
+  if (expenses) {
+    res.status(200).json({ success: true, expenses });
+  } else {
+    res.status(404).json({
+      success: false,
+      msg: "Unable to fetch all expenses in group at this time, please try again later.",
+    });
+  }
+};
 
 const addNewExpense = async (req, res) => {
-  let { name, amount, grp_id, borrowingList, lenderList, categoryName } = await req.body;
+  let { name, amount, grp_id, borrowingList, lenderList, categoryName } =
+    await req.body;
   const { userID } = await user;
   if (!name || !userID || !grp_id || !borrowingList || !lenderList) {
     throw new BadRequestError(
       "Please provide all the necessary information for the Expense."
     );
   }
-  const expense = await Expense.create({ name, amount, grp_id, borrowingList, lenderList, categoryName, addedByUser: userID });
+  const expense = await Expense.create({
+    name,
+    amount,
+    grp_id,
+    borrowingList,
+    lenderList,
+    categoryName,
+    addedByUser: userID,
+  });
   if (expense) {
-      res.status(201).json({
-        success: true,
-        expense,
-      });
-    } else {
+    res.status(201).json({
+      success: true,
+      expense,
+    });
+  } else {
     res.status(500).json({
       success: false,
       msg: "Unable to add the expense, please try again later.",
@@ -71,20 +83,20 @@ const deleteAllExpensesInGrp = async (req, res) => {
 };
 
 const deleteSingleExpense = async (req, res) => {
-    const { expenseID } = await req.params;
-    const deletionResult = await Expense.deleteMany({ _id: expenseID });
-    if (deletionResult.ok === 1 && deletionResult.deletedCount > 0) {
-      res.status(200).json({
-        success: true,
-        msg: "The given expenses is deleted successfully!",
-      });
-    } else {
-      res.status(500).json({
-        success: false,
-        msg: "Deletion failed or no documents were deleted.",
-      });
-    }
-  };
+  const { expenseID } = await req.params;
+  const deletedExpense = await Expense.findOneAndDelete({ _id: expenseID });
+  if (deletedExpense) {
+    res.status(200).json({
+      success: true,
+      deletedExpense,
+    });
+  } else {
+    res.status(500).json({
+      success: false,
+      msg: "Deletion failed or no documents were deleted.",
+    });
+  }
+};
 
 const getSingleExpense = async (req, res) => {
   const { expenseID } = await req.params;
@@ -98,7 +110,8 @@ const getSingleExpense = async (req, res) => {
 
 const updateExpense = async (req, res) => {
   const { expenseID } = await req.params;
-  const { name, amount, borrowingList, lenderList, categoryName } = await req.body;
+  const { name, amount, borrowingList, lenderList, categoryName } =
+    await req.body;
   const updateBody = {};
   if (name) updateBody.name = name;
   if (amount) updateBody.amount = amount;
@@ -129,10 +142,10 @@ const findUserTotalInGrp = async (req, res) => {
   if (!userID || !groupID) {
     throw new BadRequestError("Please provide all the necessary information.");
   }
-//   const grpExpenses = await Expense.find({ grp_id: groupID })
-//   if (grpExpenses) {
+  //   const grpExpenses = await Expense.find({ grp_id: groupID })
+  //   if (grpExpenses) {
 
-//   }
+  //   }
 
   const aggregationResult = await Expense.aggregate([
     {
@@ -157,7 +170,7 @@ const findUserTotalInGrp = async (req, res) => {
                       { $divide: ["$$borrower.balance", 100] },
                     ],
                   },
-                  0
+                  0,
                 ],
               },
             },
@@ -177,7 +190,7 @@ const findUserTotalInGrp = async (req, res) => {
                       { $divide: ["$$lender.balance", 100] },
                     ],
                   },
-                  0
+                  0,
                 ],
               },
             },
@@ -192,14 +205,14 @@ const findUserTotalInGrp = async (req, res) => {
     },
   ]);
 
-    if (aggregationResult.length > 0) {
-        const totalExpenditure = aggregationResult[0].totalExpenditure;
-        console.log('Total Expenditure:', totalExpenditure);
-        // return totalExpenditure;
-    } else {
-        console.log('No expenses found for the given group ID.');
-        // return 0;
-    }
+  if (aggregationResult.length > 0) {
+    const totalExpenditure = aggregationResult[0].totalExpenditure;
+    console.log("Total Expenditure:", totalExpenditure);
+    // return totalExpenditure;
+  } else {
+    console.log("No expenses found for the given group ID.");
+    // return 0;
+  }
   if (aggregationResult) {
     res.status(200).json({ success: true, aggregationResult });
   } else {

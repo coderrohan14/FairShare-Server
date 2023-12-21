@@ -84,7 +84,7 @@ const verifyEmail = async (req, res) => {
     }
     const newUser = await User.create(userInfo);
     if (newUser) {
-      await UnverifiedUser.findOneAndRemove({ email: user.email });
+      await UnverifiedUser.findOneAndDelete({ email: user.email });
       //   const token = await newUser.createJWT();
       //   res
       //     .status(200)
@@ -94,7 +94,11 @@ const verifyEmail = async (req, res) => {
       //       sameSite: "None",
       //       domain: process.env.SERVER_DOMAIN,
       //     })
-      res.redirect(process.env.CLIENT_URL);
+      // res.redirect(process.env.CLIENT_URL);
+      res.status(200).json({
+        success: true,
+        msg: "User registered successfully, please sign in.",
+      });
     } else {
       res
         .status(401)
@@ -137,7 +141,7 @@ const forgotPassword = async (req, res) => {
         from: process.env.GMAIL_USER.toString(),
         to: email,
         subject: "Reset your password",
-        html: `<p>Please click the following link to reset your password:</p><p><a href="https://blogbuzz.onrender.com/auth/resetPassword/${resetToken}">Reset Password</a></p>`,
+        html: `<p>Please click the following link to reset your password:</p><p><a href="${process.env.SERVER_URL}/auth/resetPassword/${resetToken}">Reset Password</a></p>`,
       };
 
       transporter.sendMail(mailOptions, (error, info) => {
@@ -174,7 +178,7 @@ const resetPassword = async (req, res) => {
       }
     );
     if (updatedUser) {
-      await PasswordReset.findOneAndRemove({ email: resetData.email });
+      await PasswordReset.findOneAndDelete({ email: resetData.email });
       const token = await updatedUser.createJWT();
       res
         .status(200)
@@ -182,7 +186,7 @@ const resetPassword = async (req, res) => {
           httpOnly: false,
           secure: true,
           sameSite: "None",
-          domain: "blogbuzz.onrender.com",
+          domain: process.env.SERVER_DOMAIN,
         })
         .redirect(process.env.CLIENT_URL);
     } else {
@@ -209,7 +213,7 @@ const loginUser = async (req, res) => {
           httpOnly: false,
           secure: true,
           sameSite: "None",
-          domain: "blogbuzz.onrender.com",
+          domain: process.env.SERVER_DOMAIN,
         })
         .json({ success: true, msg: "Login Successful." });
     } else {
@@ -237,7 +241,7 @@ const googleCallback = async (req, res) => {
         httpOnly: false,
         secure: true,
         sameSite: "None",
-        domain: "blogbuzz.onrender.com",
+        domain: process.env.SERVER_DOMAIN,
       })
       .redirect(process.env.CLIENT_URL);
   } else {
@@ -254,7 +258,7 @@ const googleCallback = async (req, res) => {
         httpOnly: false,
         secure: true,
         sameSite: "None",
-        domain: "blogbuzz.onrender.com",
+        domain: process.env.SERVER_DOMAIN,
       })
       .redirect(process.env.CLIENT_URL);
   }
