@@ -26,7 +26,8 @@ const ExpenseSchema = new mongoose.Schema({
   },
   categoryName: {
     type: String,
-    minLength: 1
+    minLength: 1,
+    default: "Miscellaneous",
   },
   dateAdded: {
     type: Date,
