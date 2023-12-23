@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const MemberSchema = require("./Member");
 
 const ExpenseSchema = new mongoose.Schema({
   name: {
@@ -9,7 +8,7 @@ const ExpenseSchema = new mongoose.Schema({
   },
   amount: {
     type: mongoose.Types.Decimal128,
-    default: 0.0,
+    required: [true, "Please provide the amount."],
   },
   grp_id: {
     type: mongoose.Types.ObjectId,
@@ -17,11 +16,21 @@ const ExpenseSchema = new mongoose.Schema({
     required: [true, "Please provide the grp ID."],
   },
   borrowingList: {
-    type: [MemberSchema],
+    type: [
+      {
+        userID: mongoose.Types.ObjectId,
+        percentage: mongoose.Types.Decimal128,
+      },
+    ],
     default: [],
   },
   lenderList: {
-    type: [MemberSchema],
+    type: [
+      {
+        userID: mongoose.Types.ObjectId,
+        percentage: mongoose.Types.Decimal128,
+      },
+    ],
     default: [],
   },
   categoryName: {

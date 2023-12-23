@@ -1,23 +1,37 @@
 const Expense = require("../models/Expense");
+const Group = require("../models/Group");
 const { BadRequestError, NotFoundError } = require("../errors");
+const { default: mongoose } = require("mongoose");
 
 const getAllExpenseInGroup = async (req, res) => {
   const { page, sortBy } = await req.query;
   const { groupID } = await req.params;
+  const { userID } = await req.body.user;
   const pageQuery = Number(page) || 1;
   const limitQuery = 10;
   const skipBy = (pageQuery - 1) * limitQuery;
   const sortByQuery = sortBy ? sortBy : "-dateAdded";
-  const expenses = await Expense.find({ grp_id: groupID })
-    .sort(sortByQuery)
-    .skip(skipBy)
-    .limit(limitQuery);
-  if (expenses) {
-    res.status(200).json({ success: true, expenses });
+  const group = await Group.find({
+    _id: groupID,
+    "members.memberID": userID,
+  });
+  if (group) {
+    const expenses = await Expense.find({ grp_id: groupID })
+      .sort(sortByQuery)
+      .skip(skipBy)
+      .limit(limitQuery);
+    if (expenses) {
+      res.status(200).json({ success: true, expenses });
+    } else {
+      res.status(404).json({
+        success: false,
+        msg: "Unable to fetch all expenses in group at this time, please try again later.",
+      });
+    }
   } else {
-    res.status(404).json({
+    res.status(500).json({
       success: false,
-      msg: "Unable to fetch all expenses in group at this time, please try again later.",
+      msg: "You are not authorized to access the expenses of this group.",
     });
   }
 };
@@ -36,32 +50,51 @@ const getAllExpenseInGroupWithoutFilters = async (req, res) => {
 };
 
 const addNewExpense = async (req, res) => {
-  let { name, amount, grp_id, borrowingList, lenderList, categoryName } =
+  let { name, amount, borrowingList, lenderList, categoryName, user } =
     await req.body;
+  const { groupID } = await req.params;
   const { userID } = await user;
-  if (!name || !userID || !grp_id || !borrowingList || !lenderList) {
+  if (
+    !name ||
+    !userID ||
+    !groupID ||
+    !borrowingList ||
+    !lenderList ||
+    !amount
+  ) {
     throw new BadRequestError(
       "Please provide all the necessary information for the Expense."
     );
   }
-  const expense = await Expense.create({
-    name,
-    amount,
-    grp_id,
-    borrowingList,
-    lenderList,
-    categoryName,
-    addedByUser: userID,
+  const group = await Group.findOne({
+    _id: groupID,
+    members: { $in: [userID] },
   });
-  if (expense) {
-    res.status(201).json({
-      success: true,
-      expense,
+  if (group) {
+    const expense = await Expense.create({
+      name,
+      amount,
+      grp_id: groupID,
+      borrowingList,
+      lenderList,
+      categoryName,
+      addedByUser: userID,
     });
+    if (expense) {
+      res.status(201).json({
+        success: true,
+        expense,
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        msg: "Unable to add the expense, please try again later.",
+      });
+    }
   } else {
     res.status(500).json({
       success: false,
-      msg: "Unable to add the expense, please try again later.",
+      msg: "No group found with the given groupID or you are not authorized to add expenses to this group.",
     });
   }
 };
@@ -69,7 +102,7 @@ const addNewExpense = async (req, res) => {
 const deleteAllExpensesInGrp = async (req, res) => {
   const { groupID } = await req.params;
   const deletionResult = await Expense.deleteMany({ grp_id: groupID });
-  if (deletionResult.ok === 1 && deletionResult.deletedCount > 0) {
+  if (deletionResult.acknowledged && deletionResult.deletedCount > 0) {
     res.status(200).json({
       success: true,
       msg: "All the expenses in this group deleted successfully!",
@@ -88,7 +121,7 @@ const deleteSingleExpense = async (req, res) => {
   if (deletedExpense) {
     res.status(200).json({
       success: true,
-      deletedExpense,
+      msg: "Expense deleted successfully.",
     });
   } else {
     res.status(500).json({
@@ -100,7 +133,7 @@ const deleteSingleExpense = async (req, res) => {
 
 const getSingleExpense = async (req, res) => {
   const { expenseID } = await req.params;
-  const expense = await Group.findOne({ _id: expenseID });
+  const expense = await Expense.findOne({ _id: expenseID });
   if (expense) {
     res.status(200).json({ success: true, expense });
   } else {
@@ -137,88 +170,98 @@ const updateExpense = async (req, res) => {
 };
 
 const findUserTotalInGrp = async (req, res) => {
-  const { userID } = await user;
+  const { userID } = await req.body.user;
   const { groupID } = await req.params;
   if (!userID || !groupID) {
     throw new BadRequestError("Please provide all the necessary information.");
   }
-  //   const grpExpenses = await Expense.find({ grp_id: groupID })
-  //   if (grpExpenses) {
 
-  //   }
-
-  const aggregationResult = await Expense.aggregate([
-    {
-      $match: {
-        grp_id: groupID,
+  const group = await Group.findOne({
+    _id: groupID,
+    "members.memberID": userID,
+  });
+  if (group) {
+    const aggregationResult = await Expense.aggregate([
+      {
+        $match: {
+          grp_id: new mongoose.Types.ObjectId(groupID),
+        },
       },
-    },
-    {
-      $project: {
-        _id: 0,
-        totalBorrowed: {
-          $sum: {
-            $map: {
-              input: "$borrowingList",
-              as: "borrower",
-              in: {
-                $cond: [
-                  { $eq: ["$$borrower.memberID", userID] },
-                  {
-                    $multiply: [
-                      "$amount",
-                      { $divide: ["$$borrower.balance", 100] },
-                    ],
-                  },
-                  0,
-                ],
+      {
+        $project: {
+          totalBorrowed: {
+            $sum: {
+              $map: {
+                input: "$borrowingList",
+                as: "borrower",
+                in: {
+                  $cond: [
+                    {
+                      $eq: [
+                        "$$borrower.memberID",
+                        new mongoose.Types.ObjectId(userID),
+                      ],
+                    },
+                    {
+                      $multiply: [
+                        "$amount",
+                        { $divide: ["$$borrower.balance", 100] },
+                      ],
+                    },
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+          totalLent: {
+            $sum: {
+              $map: {
+                input: "$lenderList",
+                as: "lender",
+                in: {
+                  $cond: [
+                    {
+                      $eq: [
+                        "$$lender.memberID",
+                        new mongoose.Types.ObjectId(userID),
+                      ],
+                    },
+                    {
+                      $multiply: [
+                        "$amount",
+                        { $divide: ["$$lender.balance", 100] },
+                      ],
+                    },
+                    0,
+                  ],
+                },
               },
             },
           },
         },
-        totalLent: {
-          $sum: {
-            $map: {
-              input: "$lenderList",
-              as: "lender",
-              in: {
-                $cond: [
-                  { $eq: ["$$lender.memberID", userID] },
-                  {
-                    $multiply: [
-                      "$amount",
-                      { $divide: ["$$lender.balance", 100] },
-                    ],
-                  },
-                  0,
-                ],
-              },
-            },
-          },
+      },
+      {
+        $project: {
+          totalExpenditure: { $subtract: ["$totalLent", "$totalBorrowed"] },
         },
       },
-    },
-    {
-      $project: {
-        totalExpenditure: { $subtract: ["$totalLent", "$totalBorrowed"] },
-      },
-    },
-  ]);
-
-  if (aggregationResult.length > 0) {
-    const totalExpenditure = aggregationResult[0].totalExpenditure;
-    console.log("Total Expenditure:", totalExpenditure);
-    // return totalExpenditure;
-  } else {
-    console.log("No expenses found for the given group ID.");
-    // return 0;
-  }
-  if (aggregationResult) {
-    res.status(200).json({ success: true, aggregationResult });
+    ]);
+    if (aggregationResult) {
+      res.status(200).json({
+        success: true,
+        balance: aggregationResult[0].totalExpenditure,
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        msg: "Unable to get the total balance, please try again later.",
+      });
+    }
   } else {
     res.status(500).json({
       success: false,
-      msg: "Unable to get the total for the user, please try again later.",
+      msg: "You are not a part of the given group.",
     });
   }
 };

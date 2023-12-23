@@ -6,7 +6,7 @@ const {
   updateGroup,
   deleteGroup,
   deleteAllGroups,
-  addGroupToUserGroups,
+  addUserToGroup,
 } = require("../controllers/groups");
 const router = express.Router();
 
@@ -29,7 +29,7 @@ router.post(
   "/addToGroupList/:groupID",
   authMiddleware,
   csrfAuthMiddleware,
-  addGroupToUserGroups
+  addUserToGroup
 );
 
 module.exports = router;
