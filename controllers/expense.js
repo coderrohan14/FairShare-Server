@@ -13,7 +13,7 @@ const getAllExpenseInGroup = async (req, res) => {
   const sortByQuery = sortBy ? sortBy : "-dateAdded";
   const group = await Group.find({
     _id: groupID,
-    "members.memberID": userID,
+    members: { $in: [userID] },
   });
   if (group) {
     const expenses = await Expense.find({ grp_id: groupID })
@@ -178,7 +178,7 @@ const findUserTotalInGrp = async (req, res) => {
 
   const group = await Group.findOne({
     _id: groupID,
-    "members.memberID": userID,
+    members: { $in: [userID] },
   });
   if (group) {
     const aggregationResult = await Expense.aggregate([
@@ -198,14 +198,14 @@ const findUserTotalInGrp = async (req, res) => {
                   $cond: [
                     {
                       $eq: [
-                        "$$borrower.memberID",
+                        "$$borrower.userID",
                         new mongoose.Types.ObjectId(userID),
                       ],
                     },
                     {
                       $multiply: [
                         "$amount",
-                        { $divide: ["$$borrower.balance", 100] },
+                        { $divide: ["$$borrower.percentage", 100] },
                       ],
                     },
                     0,
@@ -223,14 +223,14 @@ const findUserTotalInGrp = async (req, res) => {
                   $cond: [
                     {
                       $eq: [
-                        "$$lender.memberID",
+                        "$$lender.userID",
                         new mongoose.Types.ObjectId(userID),
                       ],
                     },
                     {
                       $multiply: [
                         "$amount",
-                        { $divide: ["$$lender.balance", 100] },
+                        { $divide: ["$$lender.percentage", 100] },
                       ],
                     },
                     0,

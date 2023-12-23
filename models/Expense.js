@@ -18,8 +18,17 @@ const ExpenseSchema = new mongoose.Schema({
   borrowingList: {
     type: [
       {
-        userID: mongoose.Types.ObjectId,
-        percentage: mongoose.Types.Decimal128,
+        userID: {
+          type: mongoose.Types.ObjectId,
+          required: [true, "Please provide the borrowing userID."],
+        },
+        percentage: {
+          type: mongoose.Types.Decimal128,
+          required: [
+            true,
+            "Please provide the borrowing user's percentage in total amount.",
+          ],
+        },
       },
     ],
     default: [],
@@ -27,8 +36,17 @@ const ExpenseSchema = new mongoose.Schema({
   lenderList: {
     type: [
       {
-        userID: mongoose.Types.ObjectId,
-        percentage: mongoose.Types.Decimal128,
+        userID: {
+          type: mongoose.Types.ObjectId,
+          required: [true, "Please provide the lending userID."],
+        },
+        percentage: {
+          type: mongoose.Types.Decimal128,
+          required: [
+            true,
+            "Please provide the lending user's percentage in total amount.",
+          ],
+        },
       },
     ],
     default: [],
