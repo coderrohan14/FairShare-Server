@@ -7,6 +7,7 @@ const {
   deleteGroup,
   deleteAllGroups,
   addUserToGroup,
+  testNeo4J,
 } = require("../controllers/groups");
 const router = express.Router();
 
@@ -24,6 +25,8 @@ router.get("/:groupID", authMiddleware, csrfAuthMiddleware, getSingleGroup);
 router.patch("/:groupID", authMiddleware, csrfAuthMiddleware, updateGroup);
 
 router.delete("/:groupID", authMiddleware, csrfAuthMiddleware, deleteGroup);
+
+router.post("/testNeo4j/:userID/:groupID", testNeo4J);
 
 router.post(
   "/addToGroupList/:groupID",

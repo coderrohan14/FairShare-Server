@@ -3,6 +3,7 @@ const User = require("../models/User");
 const Expense = require("../models/Expense");
 const { BadRequestError, NotFoundError } = require("../errors");
 const { default: mongoose } = require("mongoose");
+const { connectNeo4j } = require("../db/connect");
 
 const getAllGroups = async (req, res) => {
   const { userID } = await req.body.user;
@@ -36,6 +37,17 @@ const addNewGroup = async (req, res) => {
       { new: true } // Return the updated document
     );
     if (result) {
+      //.......Neo4j Update.........
+      const driver = await connectNeo4j();
+      //query
+      const statement = "MERGE (u:User {userID: $userID, groupID: $groupID})";
+      const params = { userID, groupID: group._id };
+      const result = await driver.executeQuery(statement, params, {
+        database: "neo4j",
+      });
+      await driver.close();
+      //.......Neo4j Update.........
+
       res.status(201).json({
         success: true,
         group,
@@ -185,6 +197,17 @@ const addUserToGroup = async (req, res) => {
         { new: true } // Return the updated document
       );
       if (updatedUser) {
+        //.......Neo4j Update.........
+        const driver = await connectNeo4j();
+        //query
+        const statement = "MERGE (u:User {userID: $userID, groupID: $groupID})";
+        const params = { userID, groupID };
+        const result = await driver.executeQuery(statement, params, {
+          database: "neo4j",
+        });
+        await driver.close();
+        //.......Neo4j Update.........
+
         res.status(200).json({
           success: true,
           msg: "User added to the group successfully.",
@@ -209,6 +232,26 @@ const addUserToGroup = async (req, res) => {
   }
 };
 
+const testNeo4J = async (req, res) => {
+  const { userID, groupID } = req.params;
+  console.log(userID, groupID);
+  //.......Neo4j Update.........
+  const driver = await connectNeo4j();
+  //query
+  const statement = "MERGE (u:User {userID: $userID, groupID: $groupID})";
+  const params = { userID, groupID };
+  const result = await driver.executeQuery(statement, params, {
+    database: "neo4j",
+  });
+  await driver.close();
+  //.......Neo4j Update.........
+
+  res.status(200).json({
+    success: true,
+    result,
+  });
+};
+
 module.exports = {
   getAllGroups,
   addNewGroup,
@@ -217,4 +260,5 @@ module.exports = {
   updateGroup,
   deleteGroup,
   addUserToGroup,
+  testNeo4J,
 };
