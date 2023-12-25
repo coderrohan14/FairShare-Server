@@ -20,6 +20,7 @@ const getAllGroups = async (req, res) => {
   }
 };
 
+// TODO: Add code to rollback to the previous state if any of the updates on the DB fail.
 const addNewGroup = async (req, res) => {
   const { user, name } = await req.body;
   const { userID } = await user;
@@ -41,7 +42,10 @@ const addNewGroup = async (req, res) => {
       const driver = await connectNeo4j();
       //query
       const statement = "MERGE (u:User {userID: $userID, groupID: $groupID})";
-      const params = { userID, groupID: group._id };
+      const params = {
+        userID: userID.toString(),
+        groupID: group._id.toString(),
+      };
       const result = await driver.executeQuery(statement, params, {
         database: "neo4j",
       });
@@ -51,6 +55,7 @@ const addNewGroup = async (req, res) => {
       res.status(201).json({
         success: true,
         group,
+        result,
       });
     } else {
       await Group.findOneAndDelete({ _id: group._id });
@@ -67,6 +72,7 @@ const addNewGroup = async (req, res) => {
   }
 };
 
+//For testing....remove before deploying
 const deleteAllGroups = async (req, res) => {
   const deletionResult = await Group.deleteMany({});
   if (deletionResult.acknowledged && deletionResult.deletedCount > 0) {
@@ -96,11 +102,10 @@ const getSingleGroup = async (req, res) => {
 
 const updateGroup = async (req, res) => {
   const { groupID } = await req.params;
-  const { name, members, user } = await req.body;
+  const { name, user } = await req.body;
   const { userID } = await user;
   const updateBody = {};
   if (name) updateBody.name = name;
-  if (members) updateBody.members = members;
   const group = await Group.find({
     _id: groupID,
     members: { $in: [new mongoose.Types.ObjectId(userID)] },
@@ -153,6 +158,23 @@ const deleteGroup = async (req, res) => {
         grp_id: groupID,
       });
 
+      for (const memberID of membersToUpdate) {
+        //.......Neo4j Update.........
+        const driver = await connectNeo4j();
+        //query
+        const statement =
+          "MATCH (u:User {userID: $userID, groupID: $groupID}) DETACH DELETE u";
+        const params = {
+          userID: memberID.toString(),
+          groupID: groupID.toString(),
+        };
+        await driver.executeQuery(statement, params, {
+          database: "neo4j",
+        });
+        await driver.close();
+        //.......Neo4j Update.........
+      }
+
       res.status(200).json({
         success: true,
         msg: "Successfully deleted the group.",
@@ -201,7 +223,10 @@ const addUserToGroup = async (req, res) => {
         const driver = await connectNeo4j();
         //query
         const statement = "MERGE (u:User {userID: $userID, groupID: $groupID})";
-        const params = { userID, groupID };
+        const params = {
+          userID: userID.toString(),
+          groupID: groupID.toString(),
+        };
         const result = await driver.executeQuery(statement, params, {
           database: "neo4j",
         });
@@ -232,14 +257,82 @@ const addUserToGroup = async (req, res) => {
   }
 };
 
+const removeUserFromGroup = async (req, res) => {
+  const { userID, user } = await req.body;
+  const currentUserID = user.userID;
+  const { groupID } = await req.params;
+  if (!userID || !groupID || !currentUserID) {
+    throw new BadRequestError("Please provide all the necessary information.");
+  }
+
+  const group = await Group.findOne({
+    _id: groupID,
+    members: { $in: [new mongoose.Types.ObjectId(currentUserID)] },
+  });
+
+  if (group) {
+    // TODO: Check whether this user is settled before removing
+    const updatedGroup = await Group.findOneAndUpdate(
+      { _id: groupID },
+      { $pull: { members: userID } },
+      { new: true } // Return the updated document
+    );
+    if (updatedGroup) {
+      const updatedUser = await User.findOneAndUpdate(
+        { _id: userID },
+        { $pull: { groups: groupID } },
+        { new: true } // Return the updated document
+      );
+      if (updatedUser) {
+        //.......Neo4j Update.........
+        const driver = await connectNeo4j();
+        //query
+        const statement =
+          "MATCH (u:User {userID: $userID, groupID: $groupID}) DETACH DELETE u";
+        const params = {
+          userID: userID.toString(),
+          groupID: groupID.toString(),
+        };
+        const result = await driver.executeQuery(statement, params, {
+          database: "neo4j",
+        });
+        await driver.close();
+        //.......Neo4j Update.........
+
+        res.status(200).json({
+          success: true,
+          msg: "User removed from the group successfully.",
+          result,
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          msg: "Unable to remove this user from the group, please try again later.",
+        });
+      }
+    } else {
+      res.status(500).json({
+        success: false,
+        msg: "Unable to remove this user from the group, please try again later.",
+      });
+    }
+  } else {
+    res.status(500).json({
+      success: false,
+      msg: "You are not authorized to remove users from this group.",
+    });
+  }
+};
+
+// Function to test queries on AuraDB....remove before deploying
 const testNeo4J = async (req, res) => {
   const { userID, groupID } = req.params;
-  console.log(userID, groupID);
   //.......Neo4j Update.........
   const driver = await connectNeo4j();
   //query
-  const statement = "MERGE (u:User {userID: $userID, groupID: $groupID})";
-  const params = { userID, groupID };
+  // const statement = "MERGE (u:User {userID: $userID, groupID: $groupID})";
+  const statement = "MATCH (u: User) DETACH DELETE u";
+  const params = {};
   const result = await driver.executeQuery(statement, params, {
     database: "neo4j",
   });
@@ -260,5 +353,6 @@ module.exports = {
   updateGroup,
   deleteGroup,
   addUserToGroup,
+  removeUserFromGroup,
   testNeo4J,
 };
