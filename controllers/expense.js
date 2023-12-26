@@ -89,6 +89,24 @@ const addNewExpense = async (req, res) => {
         addedByUser: userID,
       });
       if (expense) {
+        let curLender = lenderList.pop()
+        for (const borrower of borrowingList) {
+          while (borrower.amount) {
+            if (curLender.amount === 0) curLender = lenderList.pop();
+            if (curLender.amount < entry.amount) {
+              // Update with curLender.amount
+              borrower.amount -= curLender.amount
+              await addEdge(borrower.userID, curLender.userID, curLender.amount, groupID)
+              curLender.amount = 0
+            }
+            else {
+              // Update with borrower.amount
+              curLender.amount -= borrower.amount
+              await addEdge(borrower.userID, curLender.userID, borrower.amount, groupID)
+              borrower.amount = 0
+            }
+          }
+        }
         res.status(201).json({
           success: true,
           expense,
@@ -112,6 +130,26 @@ const addNewExpense = async (req, res) => {
     });
   }
 };
+
+async function addEdge(borrowerID, lenderID, amount, groupID) {
+  const driver = await connectNeo4j();
+  //query
+  const statement =
+    "MATCH (borrower:User {userID: $borrowerID, groupID: $groupID}) \
+     MATCH (lender:User {userID: $lenderID, groupID: $groupID}) \
+     MERGE (borrower)-[owes:OWES]->(lender) \
+     SET owes.amount = $amount";
+  const params = {
+    borrowerID: borrowerID.toString(),
+    lenderID: lenderID.toString(),
+    groupID: groupID.toString(),
+    amount: amount
+  };
+  await driver.executeQuery(statement, params, {
+    database: "neo4j",
+  });
+  await driver.close();
+}
 
 function checkValidExpense(borrowingList, lenderList) {
   const sum1 = borrowingList.reduce((sum, { amount }) => sum + amount, 0);
