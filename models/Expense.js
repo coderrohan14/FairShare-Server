@@ -22,7 +22,7 @@ const ExpenseSchema = new mongoose.Schema({
           type: mongoose.Types.ObjectId,
           required: [true, "Please provide the borrowing userID."],
         },
-        percentage: {
+        amount: {
           type: mongoose.Types.Decimal128,
           required: [
             true,
@@ -40,7 +40,7 @@ const ExpenseSchema = new mongoose.Schema({
           type: mongoose.Types.ObjectId,
           required: [true, "Please provide the lending userID."],
         },
-        percentage: {
+        amount: {
           type: mongoose.Types.Decimal128,
           required: [
             true,

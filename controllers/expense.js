@@ -49,6 +49,12 @@ const getAllExpenseInGroupWithoutFilters = async (req, res) => {
   }
 };
 
+// MATCH (userA:User {userID: 'userID_A', groupID: 'groupID_A'})
+// MATCH (userB:User {userID: 'userID_B', groupID: 'groupID_B'})
+// MERGE (userA)-[owes:OWES]->(userB)
+// SET owes.amount = 100  // Replace 100 with the actual owed amount
+// Check for sum of borrowing and lending list to be same
+
 const addNewExpense = async (req, res) => {
   let { name, amount, borrowingList, lenderList, categoryName, user } =
     await req.body;
@@ -71,24 +77,32 @@ const addNewExpense = async (req, res) => {
     members: { $in: [userID] },
   });
   if (group) {
-    const expense = await Expense.create({
-      name,
-      amount,
-      grp_id: groupID,
-      borrowingList,
-      lenderList,
-      categoryName,
-      addedByUser: userID,
-    });
-    if (expense) {
-      res.status(201).json({
-        success: true,
-        expense,
+    if (checkValidExpense(borrowingList, lenderList)) {
+      // logic to divide expenses
+      const expense = await Expense.create({
+        name,
+        amount,
+        grp_id: groupID,
+        borrowingList,
+        lenderList,
+        categoryName,
+        addedByUser: userID,
       });
+      if (expense) {
+        res.status(201).json({
+          success: true,
+          expense,
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          msg: "Unable to add the expense, please try again later.",
+        });
+      }
     } else {
       res.status(500).json({
         success: false,
-        msg: "Unable to add the expense, please try again later.",
+        msg: "The given expense is invalid, please try again.",
       });
     }
   } else {
@@ -98,6 +112,12 @@ const addNewExpense = async (req, res) => {
     });
   }
 };
+
+function checkValidExpense(borrowingList, lenderList) {
+  const sum1 = borrowingList.reduce((sum, { amount }) => sum + amount, 0);
+  const sum2 = lenderList.reduce((sum, { amount }) => sum + amount, 0);
+  return sum1 === sum2 && sum1 !== 0;
+}
 
 const deleteAllExpensesInGrp = async (req, res) => {
   const { groupID } = await req.params;
