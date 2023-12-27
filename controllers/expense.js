@@ -2,6 +2,7 @@ const Expense = require("../models/Expense");
 const Group = require("../models/Group");
 const { BadRequestError, NotFoundError } = require("../errors");
 const { default: mongoose } = require("mongoose");
+const { connectNeo4j } = require("../db/connect");
 
 const getAllExpenseInGroup = async (req, res) => {
   const { page, sortBy } = await req.query;
@@ -49,12 +50,7 @@ const getAllExpenseInGroupWithoutFilters = async (req, res) => {
   }
 };
 
-// MATCH (userA:User {userID: 'userID_A', groupID: 'groupID_A'})
-// MATCH (userB:User {userID: 'userID_B', groupID: 'groupID_B'})
-// MERGE (userA)-[owes:OWES]->(userB)
-// SET owes.amount = 100  // Replace 100 with the actual owed amount
-// Check for sum of borrowing and lending list to be same
-
+// OPTIONAL: check whether the borrowers and lender lists contain users present in the given group
 const addNewExpense = async (req, res) => {
   let { name, amount, borrowingList, lenderList, categoryName, user } =
     await req.body;
@@ -89,21 +85,30 @@ const addNewExpense = async (req, res) => {
         addedByUser: userID,
       });
       if (expense) {
-        let curLender = lenderList.pop()
+        let curLender = lenderList.pop();
         for (const borrower of borrowingList) {
-          while (borrower.amount) {
+          while (borrower.amount != 0) {
             if (curLender.amount === 0) curLender = lenderList.pop();
-            if (curLender.amount < entry.amount) {
+            if (curLender.amount < borrower.amount) {
               // Update with curLender.amount
-              borrower.amount -= curLender.amount
-              await addEdge(borrower.userID, curLender.userID, curLender.amount, groupID)
-              curLender.amount = 0
-            }
-            else {
+              borrower.amount -= curLender.amount;
+              await addEdge(
+                borrower.userID,
+                curLender.userID,
+                curLender.amount,
+                groupID
+              );
+              curLender.amount = 0;
+            } else {
               // Update with borrower.amount
-              curLender.amount -= borrower.amount
-              await addEdge(borrower.userID, curLender.userID, borrower.amount, groupID)
-              borrower.amount = 0
+              curLender.amount -= borrower.amount;
+              await addEdge(
+                borrower.userID,
+                curLender.userID,
+                borrower.amount,
+                groupID
+              );
+              borrower.amount = 0;
             }
           }
         }
@@ -138,12 +143,12 @@ async function addEdge(borrowerID, lenderID, amount, groupID) {
     "MATCH (borrower:User {userID: $borrowerID, groupID: $groupID}) \
      MATCH (lender:User {userID: $lenderID, groupID: $groupID}) \
      MERGE (borrower)-[owes:OWES]->(lender) \
-     SET owes.amount = $amount";
+     SET owes.amount = COALESCE(owes.amount, 0) + $amount";
   const params = {
     borrowerID: borrowerID.toString(),
     lenderID: lenderID.toString(),
     groupID: groupID.toString(),
-    amount: amount
+    amount: amount,
   };
   await driver.executeQuery(statement, params, {
     database: "neo4j",
