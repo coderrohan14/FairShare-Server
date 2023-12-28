@@ -72,7 +72,7 @@ const addNewExpense = async (req, res) => {
     members: { $in: [userID] },
   });
   if (group) {
-    if (checkValidExpense(borrowingList, lenderList)) {
+    if (checkValidExpense(borrowingList, lenderList, amount)) {
       // logic to divide expenses
       const expense = await Expense.create({
         name,
@@ -85,6 +85,7 @@ const addNewExpense = async (req, res) => {
       });
       if (expense) {
         await addExpenseNeo4J(lenderList, borrowingList, groupID);
+        await simplifyDebts(groupID);
         res.status(201).json({
           success: true,
           expense,
@@ -155,6 +156,7 @@ const deleteSingleExpense = async (req, res) => {
       }));
       // pass swapped lenderList and borrowringList to nulify the expense
       await addExpenseNeo4J(updatedBorrowerList, updatedLenderList, groupID);
+      await simplifyDebts(groupID);
       if (deletedExpense) {
         res.status(200).json({
           success: true,
@@ -325,10 +327,69 @@ async function addEdge(borrowerID, lenderID, amount, groupID) {
   await driver.close();
 }
 
-function checkValidExpense(borrowingList, lenderList) {
+function checkValidExpense(borrowingList, lenderList, amount) {
   const sum1 = borrowingList.reduce((sum, { amount }) => sum + amount, 0);
   const sum2 = lenderList.reduce((sum, { amount }) => sum + amount, 0);
-  return sum1 === sum2 && sum1 !== 0;
+  return sum1 === sum2 && sum1 === amount && sum1 !== 0;
+}
+
+async function simplifyDebts(groupID) {
+  //.......Neo4j Update.........
+  const driver = await connectNeo4j();
+  //query
+  let statement =
+    "MATCH (n:User {groupID: $groupID}) \
+    OPTIONAL MATCH (n)<-[incoming:OWES]-()\
+    OPTIONAL MATCH (n)-[outgoing:OWES]->()\
+    WITH n, COALESCE(SUM(incoming.amount), 0) AS incomingSum, COALESCE(SUM(outgoing.amount), 0) AS outgoingSum\
+    RETURN n.userID AS userID, n.groupID AS groupID, incomingSum - outgoingSum AS balance;";
+  let params = {
+    groupID: groupID.toString(),
+  };
+  let result = await driver.executeQuery(statement, params, {
+    database: "neo4j",
+  });
+
+  //.......Neo4j Update.........
+  const mappedResult = result.records.map((item) => ({
+    userID: item._fields[item._fieldLookup.userID],
+    groupID: item._fields[item._fieldLookup.groupID],
+    balance: item._fields[item._fieldLookup.balance],
+  }));
+
+  const borrowers = [],
+    lenders = [];
+  mappedResult.forEach((node) => {
+    if (node.balance > 0) {
+      lenders.push({
+        userID: node.userID,
+        groupID: node.groupID,
+        amount: node.balance,
+      });
+    } else if (node.balance < 0) {
+      borrowers.push({
+        userID: node.userID,
+        groupID: node.groupID,
+        amount: -node.balance,
+      });
+    }
+  });
+
+  // Remove all existing relations in this group...
+  statement =
+    "MATCH (u:User {groupID: $groupID})-[r]-()\
+              DELETE r;";
+
+  params = { groupID: groupID.toString() };
+
+  result = await driver.executeQuery(statement, params, {
+    database: "neo4j",
+  });
+
+  await driver.close();
+
+  // add simplified debts to the graph...
+  await addExpenseNeo4J(lenders, borrowers, groupID);
 }
 //....UTIL FUNCTIONS....
 

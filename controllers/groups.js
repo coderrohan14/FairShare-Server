@@ -4,6 +4,7 @@ const Expense = require("../models/Expense");
 const { BadRequestError, NotFoundError } = require("../errors");
 const { default: mongoose } = require("mongoose");
 const { connectNeo4j } = require("../db/connect");
+const { simplifyDebts } = require("./expense");
 
 const getAllGroups = async (req, res) => {
   const { userID } = await req.body.user;
@@ -326,13 +327,12 @@ const removeUserFromGroup = async (req, res) => {
 
 // Function to test queries on AuraDB....remove before deploying
 const testNeo4J = async (req, res) => {
-  // const { userID, groupID } = req.params;
+  const { groupID } = req.params;
   //.......Neo4j Update.........
   const driver = await connectNeo4j();
-  //query
   // const statement = "MERGE (u:User {userID: $userID, groupID: $groupID})";
-  // const statement = "MATCH ()-[owes:OWES]-() DELETE owes";
-  const statement = "MATCH (n: User) DETACH DELETE n;";
+  const statement = "MATCH ()-[owes:OWES]-() DELETE owes";
+  // const statement = "MATCH (n: User) DETACH DELETE n;";
   const params = {};
   const result = await driver.executeQuery(statement, params, {
     database: "neo4j",
