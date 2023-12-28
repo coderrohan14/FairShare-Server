@@ -221,76 +221,31 @@ const findUserTotalInGrp = async (req, res) => {
     members: { $in: [userID] },
   });
   if (group) {
-    const aggregationResult = await Expense.aggregate([
-      {
-        $match: {
-          grp_id: new mongoose.Types.ObjectId(groupID),
-        },
-      },
-      {
-        $project: {
-          totalBorrowed: {
-            $sum: {
-              $map: {
-                input: "$borrowingList",
-                as: "borrower",
-                in: {
-                  $cond: [
-                    {
-                      $eq: [
-                        "$$borrower.userID",
-                        new mongoose.Types.ObjectId(userID),
-                      ],
-                    },
-                    {
-                      $multiply: [
-                        "$amount",
-                        { $divide: ["$$borrower.percentage", 100] },
-                      ],
-                    },
-                    0,
-                  ],
-                },
-              },
-            },
-          },
-          totalLent: {
-            $sum: {
-              $map: {
-                input: "$lenderList",
-                as: "lender",
-                in: {
-                  $cond: [
-                    {
-                      $eq: [
-                        "$$lender.userID",
-                        new mongoose.Types.ObjectId(userID),
-                      ],
-                    },
-                    {
-                      $multiply: [
-                        "$amount",
-                        { $divide: ["$$lender.percentage", 100] },
-                      ],
-                    },
-                    0,
-                  ],
-                },
-              },
-            },
-          },
-        },
-      },
-      {
-        $project: {
-          totalExpenditure: { $subtract: ["$totalLent", "$totalBorrowed"] },
-        },
-      },
-    ]);
-    if (aggregationResult) {
+    //.......Neo4j Update.........
+    const driver = await connectNeo4j();
+    //query
+    const statement = "MATCH (node:User {userID: $userID, groupID: $groupID}) \
+                       OPTIONAL MATCH (node)-[outgoing:OWES]->() \
+                       OPTIONAL MATCH ()-[incoming:OWES]->(node) \
+                       WITH \
+                         node, \
+                         COALESCE(SUM(outgoing.amount), 0) AS sumOutgoingAmount, \
+                         COALESCE(SUM(incoming.amount), 0) AS sumIncomingAmount \
+                       RETURN \
+                         sumIncomingAmount - sumOutgoingAmount AS difference";
+    const params = {
+      userID: userID.toString(),
+      groupID: groupID.toString(),
+    };
+    const result = await driver.executeQuery(statement, params, {
+      database: "neo4j",
+    });
+    await driver.close();
+    //.......Neo4j Update.........
+    if (result) {
       res.status(200).json({
         success: true,
-        balance: aggregationResult[0].totalExpenditure,
+        balance: result.records[0]._fields[0]
       });
     } else {
       res.status(500).json({
