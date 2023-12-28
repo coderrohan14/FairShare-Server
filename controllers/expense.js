@@ -140,9 +140,9 @@ const deleteSingleExpense = async (req, res) => {
       members: { $in: [userID] },
     });
     if (group) {
-      // const deletedExpense = await Expense.findOneAndDelete({
-      //   _id: expenseID,
-      // });
+      const deletedExpense = await Expense.findOneAndDelete({
+        _id: expenseID,
+      });
       //perform neo4j updates
       const { lenderList, borrowingList } = expense;
       const updatedLenderList = lenderList.map((item) => ({
@@ -155,7 +155,7 @@ const deleteSingleExpense = async (req, res) => {
       }));
       // pass swapped lenderList and borrowringList to nulify the expense
       await addExpenseNeo4J(updatedBorrowerList, updatedLenderList, groupID);
-      if (true) {
+      if (deletedExpense) {
         res.status(200).json({
           success: true,
           msg: "Expense deleted successfully.",
