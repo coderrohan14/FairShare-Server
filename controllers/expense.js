@@ -1,7 +1,6 @@
 const Expense = require("../models/Expense");
 const Group = require("../models/Group");
 const { BadRequestError, NotFoundError } = require("../errors");
-const { default: mongoose } = require("mongoose");
 const { connectNeo4j } = require("../db/connect");
 
 const getAllExpenseInGroup = async (req, res) => {
@@ -85,33 +84,7 @@ const addNewExpense = async (req, res) => {
         addedByUser: userID,
       });
       if (expense) {
-        let curLender = lenderList.pop();
-        for (const borrower of borrowingList) {
-          while (borrower.amount != 0) {
-            if (curLender.amount === 0) curLender = lenderList.pop();
-            if (curLender.amount < borrower.amount) {
-              // Update with curLender.amount
-              borrower.amount -= curLender.amount;
-              await addEdge(
-                borrower.userID,
-                curLender.userID,
-                curLender.amount,
-                groupID
-              );
-              curLender.amount = 0;
-            } else {
-              // Update with borrower.amount
-              curLender.amount -= borrower.amount;
-              await addEdge(
-                borrower.userID,
-                curLender.userID,
-                borrower.amount,
-                groupID
-              );
-              borrower.amount = 0;
-            }
-          }
-        }
+        await addExpenseNeo4J(lenderList, borrowingList, groupID);
         res.status(201).json({
           success: true,
           expense,
@@ -154,17 +127,55 @@ const deleteAllExpensesInGrp = async (req, res) => {
 };
 
 const deleteSingleExpense = async (req, res) => {
+  const { userID } = await req.body.user;
   const { expenseID } = await req.params;
-  const deletedExpense = await Expense.findOneAndDelete({ _id: expenseID });
-  if (deletedExpense) {
-    res.status(200).json({
-      success: true,
-      msg: "Expense deleted successfully.",
+  const expense = await Expense.findOne({
+    _id: expenseID,
+  });
+  if (expense) {
+    const groupID = expense.grp_id;
+    const group = await Group.findOne;
+    ({
+      _id: groupID,
+      members: { $in: [userID] },
     });
+    if (group) {
+      // const deletedExpense = await Expense.findOneAndDelete({
+      //   _id: expenseID,
+      // });
+      //perform neo4j updates
+      const { lenderList, borrowingList } = expense;
+      const updatedLenderList = lenderList.map((item) => ({
+        userID: item.userID,
+        amount: parseFloat(item.amount.toString()),
+      }));
+      const updatedBorrowerList = borrowingList.map((item) => ({
+        userID: item.userID,
+        amount: parseFloat(item.amount.toString()),
+      }));
+      // pass swapped lenderList and borrowringList to nulify the expense
+      await addExpenseNeo4J(updatedBorrowerList, updatedLenderList, groupID);
+      if (true) {
+        res.status(200).json({
+          success: true,
+          msg: "Expense deleted successfully.",
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          msg: "Unable to delete this expense, please try again later.",
+        });
+      }
+    } else {
+      res.status(500).json({
+        success: false,
+        msg: "You are not authorized to delete this expense.",
+      });
+    }
   } else {
     res.status(500).json({
       success: false,
-      msg: "Deletion failed or no documents were deleted.",
+      msg: "No such expense found.",
     });
   }
 };
@@ -224,7 +235,8 @@ const findUserTotalInGrp = async (req, res) => {
     //.......Neo4j Update.........
     const driver = await connectNeo4j();
     //query
-    const statement = "MATCH (node:User {userID: $userID, groupID: $groupID}) \
+    const statement =
+      "MATCH (node:User {userID: $userID, groupID: $groupID}) \
                        OPTIONAL MATCH (node)-[outgoing:OWES]->() \
                        OPTIONAL MATCH ()-[incoming:OWES]->(node) \
                        WITH \
@@ -245,7 +257,7 @@ const findUserTotalInGrp = async (req, res) => {
     if (result) {
       res.status(200).json({
         success: true,
-        balance: result.records[0]._fields[0]
+        balance: result.records[0]._fields[0],
       });
     } else {
       res.status(500).json({
@@ -262,6 +274,37 @@ const findUserTotalInGrp = async (req, res) => {
 };
 
 //.....UTIL FUNCTIONS....
+
+async function addExpenseNeo4J(lenderList, borrowingList, groupID) {
+  let curLender = lenderList.pop();
+  for (const borrower of borrowingList) {
+    while (borrower.amount != 0) {
+      if (curLender.amount === 0) curLender = lenderList.pop();
+      if (curLender.amount < borrower.amount) {
+        // Update with curLender.amount
+        borrower.amount -= curLender.amount;
+        await addEdge(
+          borrower.userID,
+          curLender.userID,
+          curLender.amount,
+          groupID
+        );
+        curLender.amount = 0;
+      } else {
+        // Update with borrower.amount
+        curLender.amount -= borrower.amount;
+        await addEdge(
+          borrower.userID,
+          curLender.userID,
+          borrower.amount,
+          groupID
+        );
+        borrower.amount = 0;
+      }
+    }
+  }
+}
+
 async function addEdge(borrowerID, lenderID, amount, groupID) {
   const driver = await connectNeo4j();
   //query
