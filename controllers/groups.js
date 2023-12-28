@@ -332,6 +332,7 @@ const testNeo4J = async (req, res) => {
   const driver = await connectNeo4j();
   // const statement = "MERGE (u:User {userID: $userID, groupID: $groupID})";
   const statement = "MATCH ()-[owes:OWES]-() DELETE owes";
+
   // const statement = "MATCH (n: User) DETACH DELETE n;";
   const params = {};
   const result = await driver.executeQuery(statement, params, {

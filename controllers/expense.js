@@ -239,14 +239,13 @@ const findUserTotalInGrp = async (req, res) => {
     //query
     const statement =
       "MATCH (node:User {userID: $userID, groupID: $groupID}) \
-                       OPTIONAL MATCH (node)-[outgoing:OWES]->() \
-                       OPTIONAL MATCH ()-[incoming:OWES]->(node) \
-                       WITH \
-                         node, \
-                         COALESCE(SUM(outgoing.amount), 0) AS sumOutgoingAmount, \
-                         COALESCE(SUM(incoming.amount), 0) AS sumIncomingAmount \
-                       RETURN \
-                         sumIncomingAmount - sumOutgoingAmount AS difference";
+   OPTIONAL MATCH (node)-[outgoing:OWES]->() \
+   OPTIONAL MATCH ()-[incoming:OWES]->(node) \
+   WITH node, COALESCE(SUM(outgoing.amount), 0) AS sumOutgoingAmount, COALESCE(SUM(incoming.amount), 0) AS sumIncomingAmount \
+   OPTIONAL MATCH (node)-[selfEdge:OWES]->(node) \
+   WITH node, sumOutgoingAmount, sumIncomingAmount, COALESCE(SUM(selfEdge.amount), 0) AS selfSum \
+   RETURN sumIncomingAmount - sumOutgoingAmount + selfSum AS difference";
+
     const params = {
       userID: userID.toString(),
       groupID: groupID.toString(),
@@ -283,7 +282,7 @@ async function addExpenseNeo4J(lenderList, borrowingList, groupID) {
     // console.log("Inside for", borrower, curLender)
     while (borrower.amount != 0 && curLender) {
       if (curLender.amount === 0) curLender = lenderList.pop();
-      if(!curLender) break;
+      if (!curLender) break;
       if (curLender.amount < borrower.amount) {
         // Update with curLender.amount
         borrower.amount -= curLender.amount;
@@ -344,7 +343,9 @@ async function simplifyDebts(groupID) {
      OPTIONAL MATCH (n)<-[incoming:OWES]-() \
      OPTIONAL MATCH (n)-[outgoing:OWES]->() \
      WITH n, COALESCE(SUM(incoming.amount), 0) AS incomingSum, COALESCE(SUM(outgoing.amount), 0) AS outgoingSum \
-     RETURN n.userID AS userID, n.groupID AS groupID, incomingSum - outgoingSum AS balance;";
+     OPTIONAL MATCH (n)-[selfEdge:OWES]->(n)\
+     WITH n, incomingSum, outgoingSum, COALESCE(SUM(selfEdge.amount), 0) AS selfSum\
+     RETURN n.userID AS userID, n.groupID AS groupID, incomingSum - outgoingSum + selfSum AS balance;";
   let params = {
     groupID: groupID.toString(),
   };
@@ -359,7 +360,8 @@ async function simplifyDebts(groupID) {
     balance: item._fields[item._fieldLookup.balance],
   }));
 
-  const borrowers = [], lenders = [];
+  const borrowers = [],
+    lenders = [];
   mappedResult.forEach((node) => {
     if (node.balance > 0) {
       lenders.push({
