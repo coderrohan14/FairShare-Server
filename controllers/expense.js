@@ -136,32 +136,7 @@ const addNewExpense = async (req, res) => {
   }
 };
 
-async function addEdge(borrowerID, lenderID, amount, groupID) {
-  const driver = await connectNeo4j();
-  //query
-  const statement =
-    "MATCH (borrower:User {userID: $borrowerID, groupID: $groupID}) \
-     MATCH (lender:User {userID: $lenderID, groupID: $groupID}) \
-     MERGE (borrower)-[owes:OWES]->(lender) \
-     SET owes.amount = COALESCE(owes.amount, 0) + $amount";
-  const params = {
-    borrowerID: borrowerID.toString(),
-    lenderID: lenderID.toString(),
-    groupID: groupID.toString(),
-    amount: amount,
-  };
-  await driver.executeQuery(statement, params, {
-    database: "neo4j",
-  });
-  await driver.close();
-}
-
-function checkValidExpense(borrowingList, lenderList) {
-  const sum1 = borrowingList.reduce((sum, { amount }) => sum + amount, 0);
-  const sum2 = lenderList.reduce((sum, { amount }) => sum + amount, 0);
-  return sum1 === sum2 && sum1 !== 0;
-}
-
+//Test Function, delete before deploying...
 const deleteAllExpensesInGrp = async (req, res) => {
   const { groupID } = await req.params;
   const deletionResult = await Expense.deleteMany({ grp_id: groupID });
@@ -193,6 +168,8 @@ const deleteSingleExpense = async (req, res) => {
     });
   }
 };
+
+//TODO: create route to settle an expense
 
 const getSingleExpense = async (req, res) => {
   const { expenseID } = await req.params;
@@ -328,6 +305,34 @@ const findUserTotalInGrp = async (req, res) => {
     });
   }
 };
+
+//.....UTIL FUNCTIONS....
+async function addEdge(borrowerID, lenderID, amount, groupID) {
+  const driver = await connectNeo4j();
+  //query
+  const statement =
+    "MATCH (borrower:User {userID: $borrowerID, groupID: $groupID}) \
+     MATCH (lender:User {userID: $lenderID, groupID: $groupID}) \
+     MERGE (borrower)-[owes:OWES]->(lender) \
+     SET owes.amount = COALESCE(owes.amount, 0) + $amount";
+  const params = {
+    borrowerID: borrowerID.toString(),
+    lenderID: lenderID.toString(),
+    groupID: groupID.toString(),
+    amount: amount,
+  };
+  await driver.executeQuery(statement, params, {
+    database: "neo4j",
+  });
+  await driver.close();
+}
+
+function checkValidExpense(borrowingList, lenderList) {
+  const sum1 = borrowingList.reduce((sum, { amount }) => sum + amount, 0);
+  const sum2 = lenderList.reduce((sum, { amount }) => sum + amount, 0);
+  return sum1 === sum2 && sum1 !== 0;
+}
+//....UTIL FUNCTIONS....
 
 module.exports = {
   getAllExpenseInGroup,
