@@ -9,6 +9,7 @@ const {
   updateExpense,
   findUserTotalInGrp,
   getAllBalances,
+  settleUp,
 } = require("../controllers/expense");
 const router = express.Router();
 
@@ -42,6 +43,8 @@ router.delete(
   csrfAuthMiddleware,
   deleteSingleExpense
 );
+
+router.post("/settleup/:groupID", authMiddleware, csrfAuthMiddleware, settleUp);
 
 router.get(
   "/getExpense/:expenseID",

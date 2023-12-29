@@ -3,6 +3,8 @@ const Group = require("../models/Group");
 const { BadRequestError, NotFoundError } = require("../errors");
 const { connectNeo4j } = require("../db/connect");
 
+// TODO: Find a way to return a response first and keep running simplifyDebts on the server
+
 const getAllExpenseInGroup = async (req, res) => {
   const { page, sortBy } = await req.query;
   const { groupID } = await req.params;
@@ -182,7 +184,61 @@ const deleteSingleExpense = async (req, res) => {
   }
 };
 
-//TODO: create route to settle an expense
+const settleUp = async (req, res) => {
+  const { groupID } = req.params;
+  const { user, senderID, receiverID, amount } = await req.body;
+  const { userID } = await user;
+  console.log(userID, senderID, receiverID);
+  if (userID === senderID || userID === receiverID) {
+    const oweList = (await getOwedAmountsForUser(senderID, groupID))
+      .outgoingList;
+
+    const matchingEntry = oweList.find(
+      (entry) => entry.userID === receiverID && entry.amount >= amount
+    );
+
+    if (matchingEntry) {
+      // settle this amount
+      const driver = await connectNeo4j();
+      let statement = "";
+      if (amount == matchingEntry.amount) {
+        //  delete edge
+        statement =
+          "MATCH (sender:User {userID: $senderID, groupID: $groupID})-[owes:OWES]->(receiver:User{userID: $receiverID, groupID: $groupID})\
+          DELETE owes";
+      } else {
+        // update edge amount
+        statement =
+          "MATCH (sender:User {userID: $senderID, groupID: $groupID})-[owes:OWES]->(receiver:User {userID: $receiverID, groupID: $groupID})\
+        SET owes.amount = owes.amount - $amount";
+      }
+      params = {
+        senderID,
+        receiverID,
+        amount,
+        groupID,
+      };
+      await driver.executeQuery(statement, params, {
+        database: "neo4j",
+      });
+      await driver.close();
+      res.status(200).json({
+        success: true,
+        msg: "Settle operation successful.",
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        msg: "This settle operation is invalid.",
+      });
+    }
+  } else {
+    res.status(500).json({
+      success: false,
+      msg: "You are not authorized to settle this amount.",
+    });
+  }
+};
 
 const getSingleExpense = async (req, res) => {
   const { expenseID } = await req.params;
@@ -196,28 +252,74 @@ const getSingleExpense = async (req, res) => {
 
 const updateExpense = async (req, res) => {
   const { expenseID } = await req.params;
-  const { name, amount, borrowingList, lenderList, categoryName } =
+  let { name, amount, borrowingList, lenderList, categoryName, user } =
     await req.body;
-  const updateBody = {};
-  if (name) updateBody.name = name;
-  if (amount) updateBody.amount = amount;
-  if (borrowingList) updateBody.borrowingList = borrowingList;
-  if (lenderList) updateBody.lenderList = lenderList;
-  if (categoryName) updateBody.categoryName = categoryName;
-  const updatedExpense = await Expense.findOneAndUpdate(
-    { _id: expenseID },
-    updateBody,
-    {
-      new: true,
-      runValidators: true,
+  const { userID } = await user;
+  const expense = await Expense.findOne({
+    _id: expenseID,
+  });
+  if (expense) {
+    const groupID = expense.grp_id;
+    const group = await Group.findOne;
+    ({
+      _id: groupID,
+      members: { $in: [userID] },
+    });
+    if (group) {
+      const updateBody = {};
+      if (name) updateBody.name = name;
+      if (amount) updateBody.amount = amount;
+      if (borrowingList) updateBody.borrowingList = borrowingList;
+      if (lenderList) updateBody.lenderList = lenderList;
+      if (categoryName) updateBody.categoryName = categoryName;
+      const updatedExpense = await Expense.findOneAndUpdate(
+        { _id: expenseID },
+        updateBody,
+        {
+          new: true,
+          runValidators: true,
+        }
+      );
+      if (updatedExpense) {
+        if (lenderList || borrowingList) {
+          const prevLenderList = expense.lenderList;
+          const prevBorrowingLinst = expense.borrowingList;
+          const updatedLenderList = prevLenderList.map((item) => ({
+            userID: item.userID,
+            amount: parseFloat(item.amount.toString()),
+          }));
+          const updatedBorrowerList = prevBorrowingLinst.map((item) => ({
+            userID: item.userID,
+            amount: parseFloat(item.amount.toString()),
+          }));
+          // pass swapped lenderList and borrowringList to nulify the expense
+          await addExpenseNeo4J(
+            updatedBorrowerList,
+            updatedLenderList,
+            groupID
+          );
+          if (!lenderList) lenderList = updatedLenderList;
+          if (!borrowingList) borrowingList = updatedBorrowerList;
+          await addExpenseNeo4J(lenderList, borrowingList, groupID);
+          await simplifyDebts(groupID);
+        }
+        res.status(200).json({ success: true, updatedExpense });
+      } else {
+        res.status(500).json({
+          success: false,
+          msg: "Unable to update the Expense, please try again later.",
+        });
+      }
+    } else {
+      res.status(500).json({
+        success: false,
+        msg: "You are not authorized to delete this expense.",
+      });
     }
-  );
-  if (updatedExpense) {
-    res.status(200).json({ success: true, updatedExpense });
   } else {
     res.status(500).json({
       success: false,
-      msg: "Unable to update the Expense, please try again later.",
+      msg: "No such expense found.",
     });
   }
 };
@@ -234,31 +336,15 @@ const findUserTotalInGrp = async (req, res) => {
     members: { $in: [userID] },
   });
   if (group) {
-    //.......Neo4j Update.........
-    const driver = await connectNeo4j();
-    //query
-    const statement =
-      "MATCH (node:User {userID: $userID, groupID: $groupID}) \
-   OPTIONAL MATCH (node)-[outgoing:OWES]->() \
-   OPTIONAL MATCH ()-[incoming:OWES]->(node) \
-   WITH node, COALESCE(SUM(outgoing.amount), 0) AS sumOutgoingAmount, COALESCE(SUM(incoming.amount), 0) AS sumIncomingAmount \
-   OPTIONAL MATCH (node)-[selfEdge:OWES]->(node) \
-   WITH node, sumOutgoingAmount, sumIncomingAmount, COALESCE(SUM(selfEdge.amount), 0) AS selfSum \
-   RETURN sumIncomingAmount - sumOutgoingAmount + selfSum AS difference";
-
-    const params = {
-      userID: userID.toString(),
-      groupID: groupID.toString(),
-    };
-    const result = await driver.executeQuery(statement, params, {
-      database: "neo4j",
-    });
-    await driver.close();
-    //.......Neo4j Update.........
-    if (result) {
+    const owed = await getOwedAmountsForUser(userID, groupID);
+    if (owed) {
+      let balance = 0;
+      owed.incomingList.forEach((entry) => (balance += entry.amount));
+      owed.outgoingList.forEach((entry) => (balance -= entry.amount));
       res.status(200).json({
         success: true,
-        balance: result.records[0]._fields[0],
+        balance,
+        owed,
       });
     } else {
       res.status(500).json({
@@ -279,13 +365,12 @@ const getAllBalances = async (req, res) => {
   const driver = await connectNeo4j();
   //query
   let statement =
-    "MATCH (n:User {groupID: $groupID}) \
-     OPTIONAL MATCH (n)<-[incoming:OWES]-() \
-     OPTIONAL MATCH (n)-[outgoing:OWES]->() \
-     WITH n, COALESCE(SUM(incoming.amount), 0) AS incomingSum, COALESCE(SUM(outgoing.amount), 0) AS outgoingSum \
-     OPTIONAL MATCH (n)-[selfEdge:OWES]->(n)\
-     WITH n, incomingSum, outgoingSum, COALESCE(SUM(selfEdge.amount), 0) AS selfSum\
-     RETURN n.userID AS userID, n.groupID AS groupID, incomingSum - outgoingSum + selfSum AS balance;";
+    "MATCH (n:User {groupID: $groupID})\
+    OPTIONAL MATCH (n)<-[incoming:OWES]-(other:User)\
+    WITH n, SUM(incoming.amount) AS incomingSum\
+    OPTIONAL MATCH (n)-[outgoing:OWES]->(other:User)\
+    WITH n, incomingSum, SUM(outgoing.amount) AS outgoingSum\
+    RETURN n.userID AS userID, n.groupID AS groupID, toInteger(incomingSum - outgoingSum) AS balance";
   let params = {
     groupID: groupID.toString(),
   };
@@ -297,7 +382,7 @@ const getAllBalances = async (req, res) => {
   const mappedResult = result.records.map((item) => ({
     userID: item._fields[item._fieldLookup.userID],
     groupID: item._fields[item._fieldLookup.groupID],
-    balance: item._fields[item._fieldLookup.balance],
+    balance: parseInt(item._fields[item._fieldLookup.balance].toString()),
   }));
 
   await driver.close();
@@ -372,14 +457,21 @@ async function simplifyDebts(groupID) {
   //.......Neo4j Update.........
   const driver = await connectNeo4j();
   //query
+  // let statement =
+  //   "MATCH (n:User {groupID: $groupID}) \
+  //    OPTIONAL MATCH (n)<-[incoming:OWES]-() \
+  //    OPTIONAL MATCH (n)-[outgoing:OWES]->() \
+  //    WITH n, COALESCE(SUM(incoming.amount), 0) AS incomingSum, COALESCE(SUM(outgoing.amount), 0) AS outgoingSum \
+  //    OPTIONAL MATCH (n)-[selfEdge:OWES]->(n)\
+  //    WITH n, incomingSum, outgoingSum, COALESCE(SUM(selfEdge.amount), 0) AS selfSum\
+  //    RETURN n.userID AS userID, n.groupID AS groupID, incomingSum - outgoingSum + selfSum AS balance;";
   let statement =
-    "MATCH (n:User {groupID: $groupID}) \
-     OPTIONAL MATCH (n)<-[incoming:OWES]-() \
-     OPTIONAL MATCH (n)-[outgoing:OWES]->() \
-     WITH n, COALESCE(SUM(incoming.amount), 0) AS incomingSum, COALESCE(SUM(outgoing.amount), 0) AS outgoingSum \
-     OPTIONAL MATCH (n)-[selfEdge:OWES]->(n)\
-     WITH n, incomingSum, outgoingSum, COALESCE(SUM(selfEdge.amount), 0) AS selfSum\
-     RETURN n.userID AS userID, n.groupID AS groupID, incomingSum - outgoingSum + selfSum AS balance;";
+    "MATCH (n:User {groupID: $groupID})\
+    OPTIONAL MATCH (n)<-[incoming:OWES]-(other:User)\
+    WITH n, SUM(incoming.amount) AS incomingSum\
+    OPTIONAL MATCH (n)-[outgoing:OWES]->(other:User)\
+    WITH n, incomingSum, SUM(outgoing.amount) AS outgoingSum\
+    RETURN n.userID AS userID, n.groupID AS groupID, incomingSum - outgoingSum AS balance";
   let params = {
     groupID: groupID.toString(),
   };
@@ -428,6 +520,31 @@ async function simplifyDebts(groupID) {
   // add simplified debts to the graph...
   await addExpenseNeo4J(lenders, borrowers, groupID);
 }
+
+async function getOwedAmountsForUser(userID, groupID) {
+  const driver = await connectNeo4j();
+  let statement =
+    "MATCH (user:User {userID: $userID, groupID: $groupID})\
+    WITH user\
+    MATCH (user)-[outgoing:OWES]->(outgoingUser:User)\
+    RETURN COLLECT({ userID: outgoingUser.userID, amount: outgoing.amount }) AS outgoingList";
+  const params = { userID: userID.toString(), groupID: groupID.toString() };
+  let result = await driver.executeQuery(statement, params, {
+    database: "neo4j",
+  });
+  const outgoingList = result.records[0]._fields[0];
+  statement =
+    "MATCH (user:User {userID: $userID, groupID: $groupID})\
+    WITH user\
+    MATCH (incomingUser:User)-[incoming:OWES]->(user)\
+    RETURN COLLECT({ userID: incomingUser.userID, amount: incoming.amount }) AS incoming";
+  result = await driver.executeQuery(statement, params, {
+    database: "neo4j",
+  });
+  const incomingList = result.records[0]._fields[0];
+  await driver.close();
+  return { outgoingList, incomingList };
+}
 //....UTIL FUNCTIONS....
 
 module.exports = {
@@ -440,4 +557,6 @@ module.exports = {
   updateExpense,
   findUserTotalInGrp,
   getAllBalances,
+  getOwedAmountsForUser,
+  settleUp,
 };
