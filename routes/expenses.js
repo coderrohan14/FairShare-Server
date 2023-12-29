@@ -8,6 +8,7 @@ const {
   getSingleExpense,
   updateExpense,
   findUserTotalInGrp,
+  getAllBalances,
 } = require("../controllers/expense");
 const router = express.Router();
 
@@ -56,6 +57,13 @@ router.get(
   authMiddleware,
   csrfAuthMiddleware,
   findUserTotalInGrp
+);
+
+router.get(
+  "/getAllBalances/:groupID",
+  authMiddleware,
+  csrfAuthMiddleware,
+  getAllBalances
 );
 
 // router.post(

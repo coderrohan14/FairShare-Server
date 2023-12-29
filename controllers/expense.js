@@ -274,6 +274,40 @@ const findUserTotalInGrp = async (req, res) => {
   }
 };
 
+const getAllBalances = async (req, res) => {
+  const { groupID } = await req.params;
+  const driver = await connectNeo4j();
+  //query
+  let statement =
+    "MATCH (n:User {groupID: $groupID}) \
+     OPTIONAL MATCH (n)<-[incoming:OWES]-() \
+     OPTIONAL MATCH (n)-[outgoing:OWES]->() \
+     WITH n, COALESCE(SUM(incoming.amount), 0) AS incomingSum, COALESCE(SUM(outgoing.amount), 0) AS outgoingSum \
+     OPTIONAL MATCH (n)-[selfEdge:OWES]->(n)\
+     WITH n, incomingSum, outgoingSum, COALESCE(SUM(selfEdge.amount), 0) AS selfSum\
+     RETURN n.userID AS userID, n.groupID AS groupID, incomingSum - outgoingSum + selfSum AS balance;";
+  let params = {
+    groupID: groupID.toString(),
+  };
+  let result = await driver.executeQuery(statement, params, {
+    database: "neo4j",
+  });
+
+  //.......Neo4j Update.........
+  const mappedResult = result.records.map((item) => ({
+    userID: item._fields[item._fieldLookup.userID],
+    groupID: item._fields[item._fieldLookup.groupID],
+    balance: item._fields[item._fieldLookup.balance],
+  }));
+
+  await driver.close();
+
+  res.status(200).json({
+    success: true,
+    mappedResult,
+  });
+};
+
 //.....UTIL FUNCTIONS....
 
 async function addExpenseNeo4J(lenderList, borrowingList, groupID) {
@@ -405,4 +439,5 @@ module.exports = {
   getSingleExpense,
   updateExpense,
   findUserTotalInGrp,
+  getAllBalances,
 };
