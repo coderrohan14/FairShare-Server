@@ -69,11 +69,4 @@ router.get(
   getAllBalances
 );
 
-// router.post(
-//   "/addToGroupList/:groupID",
-//   authMiddleware,
-//   csrfAuthMiddleware,
-//   addGroupToUserGroups
-// );
-
 module.exports = router;

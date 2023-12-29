@@ -4,7 +4,6 @@ const Expense = require("../models/Expense");
 const { BadRequestError, NotFoundError } = require("../errors");
 const { default: mongoose } = require("mongoose");
 const { connectNeo4j } = require("../db/connect");
-const { simplifyDebts, getOwedAmountsForUser } = require("./expense");
 
 const getAllGroups = async (req, res) => {
   const { userID } = await req.body.user;
@@ -52,7 +51,6 @@ const addNewGroup = async (req, res) => {
       });
       await driver.close();
       //.......Neo4j Update.........
-
       res.status(201).json({
         success: true,
         group,
@@ -73,7 +71,7 @@ const addNewGroup = async (req, res) => {
   }
 };
 
-//For testing....remove before deploying
+// For testing....remove before deploying
 const deleteAllGroups = async (req, res) => {
   const deletionResult = await Group.deleteMany({});
   if (deletionResult.acknowledged && deletionResult.deletedCount > 0) {
@@ -162,7 +160,7 @@ const deleteGroup = async (req, res) => {
       for (const memberID of membersToUpdate) {
         //.......Neo4j Update.........
         const driver = await connectNeo4j();
-        //query
+        // query
         const statement =
           "MATCH (u:User {userID: $userID, groupID: $groupID}) DETACH DELETE u";
         const params = {
@@ -222,13 +220,13 @@ const addUserToGroup = async (req, res) => {
       if (updatedUser) {
         //.......Neo4j Update.........
         const driver = await connectNeo4j();
-        //query
+        // query
         const statement = "MERGE (u:User {userID: $userID, groupID: $groupID})";
         const params = {
           userID: userID.toString(),
           groupID: groupID.toString(),
         };
-        const result = await driver.executeQuery(statement, params, {
+        await driver.executeQuery(statement, params, {
           database: "neo4j",
         });
         await driver.close();
@@ -327,20 +325,16 @@ const removeUserFromGroup = async (req, res) => {
 
 // Function to test queries on AuraDB....remove before deploying
 const testNeo4J = async (req, res) => {
-  const { userID, groupID } = req.params;
   //.......Neo4j Update.........
   const driver = await connectNeo4j();
   // const statement = "MERGE (u:User {userID: $userID, groupID: $groupID})";
   const statement = "MATCH ()-[owes:OWES]-() DELETE owes";
-
-  // const statement = "MATCH (n: User) DETACH DELETE n;";
   const params = {};
   const result = await driver.executeQuery(statement, params, {
     database: "neo4j",
   });
   await driver.close();
   //.......Neo4j Update.........
-  // const data = await getOwedAmountsForUser(userID, groupID);
   res.status(200).json({
     success: true,
     result,

@@ -13,7 +13,7 @@ const ExpenseSchema = new mongoose.Schema({
   grp_id: {
     type: mongoose.Types.ObjectId,
     ref: "Group",
-    required: [true, "Please provide the grp ID."],
+    required: [true, "Please provide the group ID."],
   },
   borrowingList: {
     type: [
@@ -26,7 +26,7 @@ const ExpenseSchema = new mongoose.Schema({
           type: mongoose.Types.Decimal128,
           required: [
             true,
-            "Please provide the borrowing user's percentage in total amount.",
+            "Please provide the borrowing user's amount.",
           ],
         },
       },
@@ -44,7 +44,7 @@ const ExpenseSchema = new mongoose.Schema({
           type: mongoose.Types.Decimal128,
           required: [
             true,
-            "Please provide the lending user's percentage in total amount.",
+            "Please provide the lending user's amount.",
           ],
         },
       },

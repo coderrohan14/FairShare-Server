@@ -3,8 +3,6 @@ const Group = require("../models/Group");
 const { BadRequestError, NotFoundError } = require("../errors");
 const { connectNeo4j } = require("../db/connect");
 
-// TODO: Find a way to return a response first and keep running simplifyDebts on the server
-
 const getAllExpenseInGroup = async (req, res) => {
   const { page, sortBy } = await req.query;
   const { groupID } = await req.params;
@@ -112,7 +110,7 @@ const addNewExpense = async (req, res) => {
   }
 };
 
-//Test Function, delete before deploying...
+// Test Function, delete before deploying...
 const deleteAllExpensesInGrp = async (req, res) => {
   const { groupID } = await req.params;
   const deletionResult = await Expense.deleteMany({ grp_id: groupID });
@@ -146,7 +144,7 @@ const deleteSingleExpense = async (req, res) => {
       const deletedExpense = await Expense.findOneAndDelete({
         _id: expenseID,
       });
-      //perform neo4j updates
+      // perform neo4j updates
       const { lenderList, borrowingList } = expense;
       const updatedLenderList = lenderList.map((item) => ({
         userID: item.userID,
@@ -202,15 +200,17 @@ const settleUp = async (req, res) => {
       const driver = await connectNeo4j();
       let statement = "";
       if (amount == matchingEntry.amount) {
-        //  delete edge
+        // delete edge
         statement =
-          "MATCH (sender:User {userID: $senderID, groupID: $groupID})-[owes:OWES]->(receiver:User{userID: $receiverID, groupID: $groupID})\
-          DELETE owes";
+          "MATCH \
+           (sender:User {userID: $senderID, groupID: $groupID})-[owes:OWES]->(receiver:User{userID: $receiverID, groupID: $groupID}) \
+           DELETE owes";
       } else {
         // update edge amount
         statement =
-          "MATCH (sender:User {userID: $senderID, groupID: $groupID})-[owes:OWES]->(receiver:User {userID: $receiverID, groupID: $groupID})\
-        SET owes.amount = owes.amount - $amount";
+          "MATCH \
+           (sender:User {userID: $senderID, groupID: $groupID})-[owes:OWES]->(receiver:User {userID: $receiverID, groupID: $groupID}) \
+           SET owes.amount = owes.amount - $amount";
       }
       params = {
         senderID,
@@ -398,7 +398,6 @@ const getAllBalances = async (req, res) => {
 async function addExpenseNeo4J(lenderList, borrowingList, groupID) {
   let curLender = lenderList.pop();
   for (const borrower of borrowingList) {
-    // console.log("Inside for", borrower, curLender)
     while (borrower.amount != 0 && curLender) {
       if (curLender.amount === 0) curLender = lenderList.pop();
       if (!curLender) break;
@@ -457,21 +456,13 @@ async function simplifyDebts(groupID) {
   //.......Neo4j Update.........
   const driver = await connectNeo4j();
   //query
-  // let statement =
-  //   "MATCH (n:User {groupID: $groupID}) \
-  //    OPTIONAL MATCH (n)<-[incoming:OWES]-() \
-  //    OPTIONAL MATCH (n)-[outgoing:OWES]->() \
-  //    WITH n, COALESCE(SUM(incoming.amount), 0) AS incomingSum, COALESCE(SUM(outgoing.amount), 0) AS outgoingSum \
-  //    OPTIONAL MATCH (n)-[selfEdge:OWES]->(n)\
-  //    WITH n, incomingSum, outgoingSum, COALESCE(SUM(selfEdge.amount), 0) AS selfSum\
-  //    RETURN n.userID AS userID, n.groupID AS groupID, incomingSum - outgoingSum + selfSum AS balance;";
   let statement =
-    "MATCH (n:User {groupID: $groupID})\
-    OPTIONAL MATCH (n)<-[incoming:OWES]-(other:User)\
-    WITH n, SUM(incoming.amount) AS incomingSum\
-    OPTIONAL MATCH (n)-[outgoing:OWES]->(other:User)\
-    WITH n, incomingSum, SUM(outgoing.amount) AS outgoingSum\
-    RETURN n.userID AS userID, n.groupID AS groupID, incomingSum - outgoingSum AS balance";
+    "MATCH (n:User {groupID: $groupID}) \
+     OPTIONAL MATCH (n)<-[incoming:OWES]-(other:User) \
+     WITH n, SUM(incoming.amount) AS incomingSum \
+     OPTIONAL MATCH (n)-[outgoing:OWES]->(other:User) \
+     WITH n, incomingSum, SUM(outgoing.amount) AS outgoingSum \
+     RETURN n.userID AS userID, n.groupID AS groupID, incomingSum - outgoingSum AS balance";
   let params = {
     groupID: groupID.toString(),
   };
@@ -486,8 +477,7 @@ async function simplifyDebts(groupID) {
     balance: item._fields[item._fieldLookup.balance],
   }));
 
-  const borrowers = [],
-    lenders = [];
+  const borrowers = [], lenders = [];
   mappedResult.forEach((node) => {
     if (node.balance > 0) {
       lenders.push({
@@ -505,10 +495,7 @@ async function simplifyDebts(groupID) {
   });
 
   // Remove all existing relations in this group...
-  statement =
-    "MATCH (u:User {groupID: $groupID})-[r]-()\
-              DELETE r;";
-
+  statement = "MATCH (u:User {groupID: $groupID})-[r]-() DELETE r;";
   params = { groupID: groupID.toString() };
 
   result = await driver.executeQuery(statement, params, {
@@ -524,20 +511,20 @@ async function simplifyDebts(groupID) {
 async function getOwedAmountsForUser(userID, groupID) {
   const driver = await connectNeo4j();
   let statement =
-    "MATCH (user:User {userID: $userID, groupID: $groupID})\
-    WITH user\
-    MATCH (user)-[outgoing:OWES]->(outgoingUser:User)\
-    RETURN COLLECT({ userID: outgoingUser.userID, amount: outgoing.amount }) AS outgoingList";
+    "MATCH (user:User {userID: $userID, groupID: $groupID}) \
+     WITH user \
+     MATCH (user)-[outgoing:OWES]->(outgoingUser:User) \
+     RETURN COLLECT({ userID: outgoingUser.userID, amount: outgoing.amount }) AS outgoingList";
   const params = { userID: userID.toString(), groupID: groupID.toString() };
   let result = await driver.executeQuery(statement, params, {
     database: "neo4j",
   });
   const outgoingList = result.records[0]._fields[0];
   statement =
-    "MATCH (user:User {userID: $userID, groupID: $groupID})\
-    WITH user\
-    MATCH (incomingUser:User)-[incoming:OWES]->(user)\
-    RETURN COLLECT({ userID: incomingUser.userID, amount: incoming.amount }) AS incoming";
+    "MATCH (user:User {userID: $userID, groupID: $groupID}) \
+     WITH user \
+     MATCH (incomingUser:User)-[incoming:OWES]->(user) \
+     RETURN COLLECT({ userID: incomingUser.userID, amount: incoming.amount }) AS incoming";
   result = await driver.executeQuery(statement, params, {
     database: "neo4j",
   });
