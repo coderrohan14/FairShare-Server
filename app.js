@@ -1,6 +1,7 @@
 const express = require("express");
 require("express-async-errors");
 require("dotenv").config();
+require("./passport");
 const passport = require("passport");
 const app = express();
 const { connectDB } = require("./db/connect");
