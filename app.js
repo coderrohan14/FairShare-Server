@@ -57,6 +57,10 @@ app.get("/", (req, res) => {
   res.send("Welcome to the server...");
 });
 
+app.get("/health-check", (req, res) => {
+	res.json({ message: "Server up and running"  });
+})
+
 app.use(notFoundMiddleware);
 app.use(errorHandlerMiddleware);
 
