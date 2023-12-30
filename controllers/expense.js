@@ -36,6 +36,7 @@ const getAllExpenseInGroup = async (req, res) => {
   }
 };
 
+//Test Function, delete before deploying
 const getAllExpenseInGroupWithoutFilters = async (req, res) => {
   const { groupID } = await req.params;
   const expenses = await Expense.find({ grp_id: groupID });
@@ -85,10 +86,15 @@ const addNewExpense = async (req, res) => {
       });
       if (expense) {
         await addExpenseNeo4J(lenderList, borrowingList, groupID);
-        await simplifyDebts(groupID);
+
+        // Run simplifyDebts in the background
+        (async () => {
+          await simplifyDebts(groupID);
+        })();
+
         res.status(201).json({
           success: true,
-          expense,
+          msg: "Expense added successfully.",
         });
       } else {
         res.status(500).json({
@@ -156,7 +162,12 @@ const deleteSingleExpense = async (req, res) => {
       }));
       // pass swapped lenderList and borrowringList to nulify the expense
       await addExpenseNeo4J(updatedBorrowerList, updatedLenderList, groupID);
-      await simplifyDebts(groupID);
+
+      // Run simplifyDebts in the background
+      (async () => {
+        await simplifyDebts(groupID);
+      })();
+
       if (deletedExpense) {
         res.status(200).json({
           success: true,
@@ -301,9 +312,15 @@ const updateExpense = async (req, res) => {
           if (!lenderList) lenderList = updatedLenderList;
           if (!borrowingList) borrowingList = updatedBorrowerList;
           await addExpenseNeo4J(lenderList, borrowingList, groupID);
-          await simplifyDebts(groupID);
+
+          // Run simplifyDebts in the background
+          (async () => {
+            await simplifyDebts(groupID);
+          })();
         }
-        res.status(200).json({ success: true, updatedExpense });
+        res
+          .status(200)
+          .json({ success: true, msg: "Expense updated successfully." });
       } else {
         res.status(500).json({
           success: false,
@@ -327,6 +344,7 @@ const updateExpense = async (req, res) => {
 const findUserTotalInGrp = async (req, res) => {
   const { userID } = await req.body.user;
   const { groupID } = await req.params;
+
   if (!userID || !groupID) {
     throw new BadRequestError("Please provide all the necessary information.");
   }
@@ -355,7 +373,7 @@ const findUserTotalInGrp = async (req, res) => {
   } else {
     res.status(500).json({
       success: false,
-      msg: "You are not a part of the given group.",
+      msg: "You or the requested user is not a part of the given group.",
     });
   }
 };
@@ -477,7 +495,8 @@ async function simplifyDebts(groupID) {
     balance: item._fields[item._fieldLookup.balance],
   }));
 
-  const borrowers = [], lenders = [];
+  const borrowers = [],
+    lenders = [];
   mappedResult.forEach((node) => {
     if (node.balance > 0) {
       lenders.push({
@@ -532,6 +551,7 @@ async function getOwedAmountsForUser(userID, groupID) {
   await driver.close();
   return { outgoingList, incomingList };
 }
+
 //....UTIL FUNCTIONS....
 
 module.exports = {

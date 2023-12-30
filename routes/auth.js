@@ -40,7 +40,12 @@ router.post("/test", async (req, res) => {
 
 router.get("/getToken", authMiddleware, getToken);
 
-router.get("/getUserInfo/:userID", getUserInfo);
+router.get(
+  "/getUserInfo/:userID",
+  authMiddleware,
+  csrfAuthMiddleware,
+  getUserInfo
+);
 
 router.patch(
   "/updateUserInfo/:userID",

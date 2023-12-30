@@ -2,8 +2,8 @@ const Group = require("../models/Group");
 const User = require("../models/User");
 const Expense = require("../models/Expense");
 const { BadRequestError, NotFoundError } = require("../errors");
-const { default: mongoose } = require("mongoose");
 const { connectNeo4j } = require("../db/connect");
+const { getOwedAmountsForUser } = require("./expense");
 
 const getAllGroups = async (req, res) => {
   const { userID } = await req.body.user;
@@ -53,8 +53,7 @@ const addNewGroup = async (req, res) => {
       //.......Neo4j Update.........
       res.status(201).json({
         success: true,
-        group,
-        result,
+        msg: "Group addedd successfully.",
       });
     } else {
       await Group.findOneAndDelete({ _id: group._id });
@@ -105,9 +104,9 @@ const updateGroup = async (req, res) => {
   const { userID } = await user;
   const updateBody = {};
   if (name) updateBody.name = name;
-  const group = await Group.find({
+  const group = await Group.findOne({
     _id: groupID,
-    members: { $in: [new mongoose.Types.ObjectId(userID)] },
+    members: { $in: [userID] },
   });
   if (group) {
     const updatedGroup = await Group.findOneAndUpdate(
@@ -119,7 +118,9 @@ const updateGroup = async (req, res) => {
       }
     );
     if (updatedGroup) {
-      res.status(200).json({ success: true, updatedGroup });
+      res
+        .status(200)
+        .json({ success: true, msg: "Group updated successfully." });
     } else {
       res.status(500).json({
         success: false,
@@ -139,7 +140,7 @@ const deleteGroup = async (req, res) => {
   const { userID } = await req.body.user;
   const group = await Group.findOne({
     _id: groupID,
-    members: { $in: [new mongoose.Types.ObjectId(userID)] },
+    members: { $in: [userID] },
   });
   if (group) {
     const deletedGroup = await Group.findOneAndDelete({ _id: groupID });
@@ -202,7 +203,7 @@ const addUserToGroup = async (req, res) => {
 
   const group = await Group.findOne({
     _id: groupID,
-    members: { $in: [new mongoose.Types.ObjectId(currentUserID)] },
+    members: { $in: [currentUserID] },
   });
 
   if (group) {
@@ -266,47 +267,64 @@ const removeUserFromGroup = async (req, res) => {
 
   const group = await Group.findOne({
     _id: groupID,
-    members: { $in: [new mongoose.Types.ObjectId(currentUserID)] },
+    members: { $in: [currentUserID] },
   });
 
   if (group) {
-    // TODO: Check whether this user is settled before removing
-    const updatedGroup = await Group.findOneAndUpdate(
-      { _id: groupID },
-      { $pull: { members: userID } },
-      { new: true } // Return the updated document
-    );
-    if (updatedGroup) {
-      const updatedUser = await User.findOneAndUpdate(
-        { _id: userID },
-        { $pull: { groups: groupID } },
-        { new: true } // Return the updated document
-      );
-      if (updatedUser) {
-        //.......Neo4j Update.........
-        const driver = await connectNeo4j();
-        //query
-        const statement =
-          "MATCH (u:User {userID: $userID, groupID: $groupID}) DETACH DELETE u";
-        const params = {
-          userID: userID.toString(),
-          groupID: groupID.toString(),
-        };
-        const result = await driver.executeQuery(statement, params, {
-          database: "neo4j",
-        });
-        await driver.close();
-        //.......Neo4j Update.........
+    const owed = await getOwedAmountsForUser(userID, groupID);
+    if (owed) {
+      let balance = 0;
+      owed.incomingList.forEach((entry) => (balance += entry.amount));
+      owed.outgoingList.forEach((entry) => (balance -= entry.amount));
+      if (balance === 0) {
+        // TODO: Check whether this user is settled before removing
+        const updatedGroup = await Group.findOneAndUpdate(
+          { _id: groupID },
+          { $pull: { members: userID } },
+          { new: true } // Return the updated document
+        );
+        if (updatedGroup) {
+          const updatedUser = await User.findOneAndUpdate(
+            { _id: userID },
+            { $pull: { groups: groupID } },
+            { new: true } // Return the updated document
+          );
+          if (updatedUser) {
+            //.......Neo4j Update.........
+            const driver = await connectNeo4j();
+            //query
+            const statement =
+              "MATCH (u:User {userID: $userID, groupID: $groupID}) DETACH DELETE u";
+            const params = {
+              userID: userID.toString(),
+              groupID: groupID.toString(),
+            };
+            const result = await driver.executeQuery(statement, params, {
+              database: "neo4j",
+            });
+            await driver.close();
+            //.......Neo4j Update.........
 
-        res.status(200).json({
-          success: true,
-          msg: "User removed from the group successfully.",
-          result,
-        });
+            res.status(200).json({
+              success: true,
+              msg: "User removed from the group successfully.",
+            });
+          } else {
+            res.status(500).json({
+              success: false,
+              msg: "Unable to remove this user from the group, please try again later.",
+            });
+          }
+        } else {
+          res.status(500).json({
+            success: false,
+            msg: "Unable to remove this user from the group, please try again later.",
+          });
+        }
       } else {
         res.status(500).json({
           success: false,
-          msg: "Unable to remove this user from the group, please try again later.",
+          msg: "This user is not settled up, hence cannot be removed from the group.",
         });
       }
     } else {

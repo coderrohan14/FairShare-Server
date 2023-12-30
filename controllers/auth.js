@@ -85,20 +85,7 @@ const verifyEmail = async (req, res) => {
     const newUser = await User.create(userInfo);
     if (newUser) {
       await UnverifiedUser.findOneAndDelete({ email: user.email });
-      //   const token = await newUser.createJWT();
-      //   res
-      //     .status(200)
-      //     .cookie("XSRF_TOKEN", token, {
-      //       httpOnly: false,
-      //       secure: true,
-      //       sameSite: "None",
-      //       domain: process.env.SERVER_DOMAIN,
-      //     })
-      // res.redirect(process.env.CLIENT_URL);
-      res.status(200).json({
-        success: true,
-        msg: "User registered successfully, please sign in.",
-      });
+      res.redirect(process.env.CLIENT_URL);
     } else {
       res
         .status(401)
@@ -179,16 +166,7 @@ const resetPassword = async (req, res) => {
     );
     if (updatedUser) {
       await PasswordReset.findOneAndDelete({ email: resetData.email });
-      const token = await updatedUser.createJWT();
-      res
-        .status(200)
-        .cookie("XSRF_TOKEN", token, {
-          httpOnly: false,
-          secure: true,
-          sameSite: "None",
-          domain: process.env.SERVER_DOMAIN,
-        })
-        .redirect(process.env.CLIENT_URL);
+      res.redirect(process.env.CLIENT_URL);
     } else {
       res.status(401).redirect(process.env.CLIENT_URL);
     }

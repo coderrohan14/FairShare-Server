@@ -1,12 +1,12 @@
 const express = require("express");
 require("express-async-errors");
 require("dotenv").config();
+const passport = require("passport");
 const app = express();
 const { connectDB } = require("./db/connect");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const bodyParser = require("body-parser");
-const passport = require("passport");
 const authRouter = require("./routes/auth");
 const groupsRouter = require("./routes/groups");
 const expenseRouter = require("./routes/expenses");
@@ -31,6 +31,8 @@ app.use(
 app.use(bodyParser.json());
 
 app.use(express.urlencoded({ extended: true }));
+
+app.use(express.static("public"));
 
 app.use(passport.initialize());
 
