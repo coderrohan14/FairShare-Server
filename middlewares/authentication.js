@@ -2,7 +2,6 @@ const jwt = require("jsonwebtoken");
 const { UnauthenticatedError } = require("../errors");
 
 module.exports = async (req, res, next) => {
-  console.log(req.cookies);
   if (!req.cookies) {
     next(new UnauthenticatedError("Authentication failed."));
   }

@@ -30,6 +30,10 @@ const UserSchema = new mongoose.Schema(
     password: {
       type: String,
     },
+    groups: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "Group" }],
+      default: [],
+    },
   },
   { timestamps: true }
 );
