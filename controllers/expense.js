@@ -233,6 +233,15 @@ const settleUp = async (req, res) => {
         database: "neo4j",
       });
       await driver.close();
+      await Expense.create({
+        name: "Settlement",
+        amount,
+        grp_id: groupID,
+        borrowingList: [{ userID: receiverID, amount }],
+        lenderList: [{ userID: senderID, amount }],
+        categoryName: "Settlement",
+        addedByUser: userID,
+      });
       res.status(200).json({
         success: true,
         msg: "Settle operation successful.",
