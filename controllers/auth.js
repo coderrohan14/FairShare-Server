@@ -84,16 +84,7 @@ const verifyEmail = async (req, res) => {
     }
     const newUser = await User.create(userInfo);
     if (newUser) {
-      await UnverifiedUser.findOneAndRemove({ email: user.email });
-      //   const token = await newUser.createJWT();
-      //   res
-      //     .status(200)
-      //     .cookie("XSRF_TOKEN", token, {
-      //       httpOnly: false,
-      //       secure: true,
-      //       sameSite: "None",
-      //       domain: process.env.SERVER_DOMAIN,
-      //     })
+      await UnverifiedUser.findOneAndDelete({ email: user.email });
       res.redirect(process.env.CLIENT_URL);
     } else {
       res
@@ -137,7 +128,7 @@ const forgotPassword = async (req, res) => {
         from: process.env.GMAIL_USER.toString(),
         to: email,
         subject: "Reset your password",
-        html: `<p>Please click the following link to reset your password:</p><p><a href="https://blogbuzz.onrender.com/auth/resetPassword/${resetToken}">Reset Password</a></p>`,
+        html: `<p>Please click the following link to reset your password:</p><p><a href="${process.env.SERVER_URL}/auth/resetPassword/${resetToken}">Reset Password</a></p>`,
       };
 
       transporter.sendMail(mailOptions, (error, info) => {
@@ -174,17 +165,8 @@ const resetPassword = async (req, res) => {
       }
     );
     if (updatedUser) {
-      await PasswordReset.findOneAndRemove({ email: resetData.email });
-      const token = await updatedUser.createJWT();
-      res
-        .status(200)
-        .cookie("XSRF_TOKEN", token, {
-          httpOnly: false,
-          secure: true,
-          sameSite: "None",
-          domain: "blogbuzz.onrender.com",
-        })
-        .redirect(process.env.CLIENT_URL);
+      await PasswordReset.findOneAndDelete({ email: resetData.email });
+      res.redirect(process.env.CLIENT_URL);
     } else {
       res.status(401).redirect(process.env.CLIENT_URL);
     }
@@ -209,7 +191,7 @@ const loginUser = async (req, res) => {
           httpOnly: false,
           secure: true,
           sameSite: "None",
-          domain: "blogbuzz.onrender.com",
+          domain: process.env.SERVER_DOMAIN,
         })
         .json({ success: true, msg: "Login Successful." });
     } else {
@@ -237,7 +219,7 @@ const googleCallback = async (req, res) => {
         httpOnly: false,
         secure: true,
         sameSite: "None",
-        domain: "blogbuzz.onrender.com",
+        domain: process.env.SERVER_DOMAIN,
       })
       .redirect(process.env.CLIENT_URL);
   } else {
@@ -254,7 +236,7 @@ const googleCallback = async (req, res) => {
         httpOnly: false,
         secure: true,
         sameSite: "None",
-        domain: "blogbuzz.onrender.com",
+        domain: process.env.SERVER_DOMAIN,
       })
       .redirect(process.env.CLIENT_URL);
   }
